@@ -48,7 +48,8 @@ impl BrokerPool {
         let request_timeout = Duration::from_millis(self.config.request_timeout_ms);
 
         for server in &self.config.bootstrap_servers {
-            let conn = self.create_connection(-1, server.clone(), connect_timeout, request_timeout)?;
+            let conn =
+                self.create_connection(-1, server.clone(), connect_timeout, request_timeout)?;
 
             match conn.connect().await {
                 Ok(()) => {
@@ -263,7 +264,11 @@ impl BrokerInfo {
     /// Create a new broker info.
     #[must_use]
     pub fn new(node_id: i32, host: String, port: i32) -> Self {
-        Self { node_id, host, port }
+        Self {
+            node_id,
+            host,
+            port,
+        }
     }
 }
 

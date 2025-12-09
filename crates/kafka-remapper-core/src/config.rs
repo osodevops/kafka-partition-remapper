@@ -407,7 +407,9 @@ impl MappingConfig {
     pub fn validate(&self) -> ConfigResult<()> {
         // Physical partitions must be at least 1
         if self.physical_partitions == 0 {
-            return Err(ConfigError::InvalidPhysicalPartitions(self.physical_partitions));
+            return Err(ConfigError::InvalidPhysicalPartitions(
+                self.physical_partitions,
+            ));
         }
 
         // Virtual partitions must be >= physical partitions
@@ -642,14 +644,8 @@ mapping:
         assert!(!config.kafka.security_protocol.requires_sasl());
 
         let tls = config.kafka.tls.unwrap();
-        assert_eq!(
-            tls.ca_cert_path,
-            Some(PathBuf::from("/etc/ssl/ca.crt"))
-        );
-        assert_eq!(
-            tls.cert_path,
-            Some(PathBuf::from("/etc/ssl/client.crt"))
-        );
+        assert_eq!(tls.ca_cert_path, Some(PathBuf::from("/etc/ssl/ca.crt")));
+        assert_eq!(tls.cert_path, Some(PathBuf::from("/etc/ssl/client.crt")));
     }
 
     #[test]

@@ -49,9 +49,7 @@ pub mod tls;
 pub mod testing;
 
 // Re-export commonly used types
-pub use config::{
-    BrokerSaslConfig, BrokerTlsConfig, ProxyConfig, SaslMechanism, SecurityProtocol,
-};
+pub use broker::{BrokerConnection, BrokerPool, BrokerStream};
+pub use config::{BrokerSaslConfig, BrokerTlsConfig, ProxyConfig, SaslMechanism, SecurityProtocol};
 pub use error::{AuthError, ConfigError, ProxyError, RemapError, Result, TlsError};
 pub use tls::TlsConnector;
-pub use broker::{BrokerStream, BrokerConnection, BrokerPool};

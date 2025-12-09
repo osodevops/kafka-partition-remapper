@@ -79,11 +79,9 @@ impl ProtocolHandler for OffsetCommitHandler {
 
         // Decode the request (skip the 8-byte header: api_key, api_version, correlation_id)
         let mut request_bytes = bytes::Bytes::copy_from_slice(&frame.bytes[8..]);
-        let mut request =
-            OffsetCommitRequest::decode(&mut request_bytes, frame.api_version).map_err(|e| {
-                ProxyError::ProtocolDecode {
-                    message: format!("failed to decode OffsetCommitRequest: {}", e),
-                }
+        let mut request = OffsetCommitRequest::decode(&mut request_bytes, frame.api_version)
+            .map_err(|e| ProxyError::ProtocolDecode {
+                message: format!("failed to decode OffsetCommitRequest: {}", e),
             })?;
 
         // Translate virtual -> physical
@@ -148,14 +146,12 @@ mod tests {
         let handler = OffsetCommitHandler::new(test_remapper(), test_pool());
 
         let mut request = OffsetCommitRequest::default();
-        request.group_id = kafka_protocol::messages::GroupId::from(StrBytes::from_static_str(
-            "test-group",
-        ));
+        request.group_id =
+            kafka_protocol::messages::GroupId::from(StrBytes::from_static_str("test-group"));
 
         let mut topic = OffsetCommitRequestTopic::default();
-        topic.name = kafka_protocol::messages::TopicName::from(StrBytes::from_static_str(
-            "test-topic",
-        ));
+        topic.name =
+            kafka_protocol::messages::TopicName::from(StrBytes::from_static_str("test-topic"));
 
         let mut partition = OffsetCommitRequestPartition::default();
         partition.partition_index = 27; // Virtual partition
@@ -184,14 +180,12 @@ mod tests {
         let handler = OffsetCommitHandler::new(test_remapper(), test_pool());
 
         let mut request = OffsetCommitRequest::default();
-        request.group_id = kafka_protocol::messages::GroupId::from(StrBytes::from_static_str(
-            "test-group",
-        ));
+        request.group_id =
+            kafka_protocol::messages::GroupId::from(StrBytes::from_static_str("test-group"));
 
         let mut topic = OffsetCommitRequestTopic::default();
-        topic.name = kafka_protocol::messages::TopicName::from(StrBytes::from_static_str(
-            "test-topic",
-        ));
+        topic.name =
+            kafka_protocol::messages::TopicName::from(StrBytes::from_static_str("test-topic"));
 
         // Add multiple partitions
         for (v_part, v_offset) in [(0, 100), (50, 5000), (99, 999)] {
@@ -213,11 +207,17 @@ mod tests {
         // Virtual 50 -> Physical 0, group 5
         assert_eq!(request.topics[0].partitions[1].partition_index, 0);
         let expected_50 = 5i64 * (1i64 << 40) + 5000;
-        assert_eq!(request.topics[0].partitions[1].committed_offset, expected_50);
+        assert_eq!(
+            request.topics[0].partitions[1].committed_offset,
+            expected_50
+        );
 
         // Virtual 99 -> Physical 9, group 9
         assert_eq!(request.topics[0].partitions[2].partition_index, 9);
         let expected_99 = 9i64 * (1i64 << 40) + 999;
-        assert_eq!(request.topics[0].partitions[2].committed_offset, expected_99);
+        assert_eq!(
+            request.topics[0].partitions[2].committed_offset,
+            expected_99
+        );
     }
 }

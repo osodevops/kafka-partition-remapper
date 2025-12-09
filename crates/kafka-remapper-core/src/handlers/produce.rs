@@ -100,10 +100,10 @@ impl ProduceHandler {
 
                     // Translate base offset back to virtual
                     if virtual_response.base_offset >= 0 {
-                        if let Ok(virtual_mapping) = self.remapper.physical_to_virtual(
-                            physical_partition,
-                            virtual_response.base_offset,
-                        ) {
+                        if let Ok(virtual_mapping) = self
+                            .remapper
+                            .physical_to_virtual(physical_partition, virtual_response.base_offset)
+                        {
                             virtual_response.base_offset = virtual_mapping.virtual_offset;
                         }
                     }
@@ -133,11 +133,9 @@ impl ProtocolHandler for ProduceHandler {
         let header_size = self.calculate_header_size(frame.api_version);
         let request_body = bytes::Bytes::copy_from_slice(&frame.bytes[header_size..]);
 
-        let request =
-            ProduceRequest::decode(&mut request_body.clone(), frame.api_version).map_err(|e| {
-                ProxyError::ProtocolDecode {
-                    message: format!("failed to decode ProduceRequest: {e}"),
-                }
+        let request = ProduceRequest::decode(&mut request_body.clone(), frame.api_version)
+            .map_err(|e| ProxyError::ProtocolDecode {
+                message: format!("failed to decode ProduceRequest: {e}"),
             })?;
 
         // Transform to physical partitions

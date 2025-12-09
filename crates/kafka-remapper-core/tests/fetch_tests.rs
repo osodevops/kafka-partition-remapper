@@ -142,7 +142,10 @@ async fn test_fetch_response_offset_translation() {
 
     // Physical offset in the range for virtual partition 50
     // Virtual 50 -> physical 0, group 5
-    let mapping = harness.remapper.virtual_to_physical(virtual_partition).unwrap();
+    let mapping = harness
+        .remapper
+        .virtual_to_physical(virtual_partition)
+        .unwrap();
     assert_eq!(mapping.physical_partition, 0);
     assert_eq!(mapping.virtual_group, 5);
 

@@ -158,34 +158,36 @@ impl BrokerConnection {
     #[instrument(skip(self), fields(broker_id = self.broker_id, address = %self.address, protocol = ?self.security_protocol))]
     pub async fn connect(&self) -> Result<()> {
         // Step 1: Establish TCP connection
-        let tcp_stream = match timeout(self.connect_timeout, TcpStream::connect(&self.address)).await {
-            Ok(Ok(stream)) => stream,
-            Ok(Err(e)) => {
-                warn!(error = %e, "failed to connect to broker");
-                return Err(ProxyError::BrokerUnavailable {
-                    broker_id: self.broker_id,
-                    message: e.to_string(),
-                });
-            }
-            Err(_) => {
-                warn!("connection timeout");
-                return Err(ProxyError::BrokerUnavailable {
-                    broker_id: self.broker_id,
-                    message: "connection timeout".to_string(),
-                });
-            }
-        };
+        let tcp_stream =
+            match timeout(self.connect_timeout, TcpStream::connect(&self.address)).await {
+                Ok(Ok(stream)) => stream,
+                Ok(Err(e)) => {
+                    warn!(error = %e, "failed to connect to broker");
+                    return Err(ProxyError::BrokerUnavailable {
+                        broker_id: self.broker_id,
+                        message: e.to_string(),
+                    });
+                }
+                Err(_) => {
+                    warn!("connection timeout");
+                    return Err(ProxyError::BrokerUnavailable {
+                        broker_id: self.broker_id,
+                        message: "connection timeout".to_string(),
+                    });
+                }
+            };
 
         debug!("TCP connection established");
 
         // Step 2: Perform TLS handshake if required
         let stream = if self.security_protocol.requires_tls() {
-            let connector = self.tls_connector.as_ref().ok_or_else(|| {
-                ProxyError::BrokerUnavailable {
-                    broker_id: self.broker_id,
-                    message: "TLS required but no connector configured".to_string(),
-                }
-            })?;
+            let connector =
+                self.tls_connector
+                    .as_ref()
+                    .ok_or_else(|| ProxyError::BrokerUnavailable {
+                        broker_id: self.broker_id,
+                        message: "TLS required but no connector configured".to_string(),
+                    })?;
 
             // Extract hostname from address for SNI
             let server_name = self.address.split(':').next().unwrap_or(&self.address);
@@ -223,12 +225,13 @@ impl BrokerConnection {
     /// This sends SaslHandshake and SaslAuthenticate requests to the broker.
     /// Supports SASL/PLAIN mechanism.
     async fn perform_sasl_handshake(&self) -> Result<()> {
-        let sasl_config = self.sasl_config.as_ref().ok_or_else(|| {
-            ProxyError::BrokerUnavailable {
-                broker_id: self.broker_id,
-                message: "SASL required but no configuration provided".to_string(),
-            }
-        })?;
+        let sasl_config =
+            self.sasl_config
+                .as_ref()
+                .ok_or_else(|| ProxyError::BrokerUnavailable {
+                    broker_id: self.broker_id,
+                    message: "SASL required but no configuration provided".to_string(),
+                })?;
 
         let mechanism_name = match sasl_config.mechanism {
             SaslMechanism::Plain => "PLAIN",
@@ -284,10 +287,7 @@ impl BrokerConnection {
                 // SCRAM requires multiple round-trips, not yet implemented
                 return Err(ProxyError::BrokerUnavailable {
                     broker_id: self.broker_id,
-                    message: format!(
-                        "SASL mechanism '{}' not yet implemented",
-                        mechanism_name
-                    ),
+                    message: format!("SASL mechanism '{}' not yet implemented", mechanism_name),
                 });
             }
         }
@@ -315,27 +315,28 @@ impl BrokerConnection {
 
         // Encode the request with the correct header version
         let mut buf = BytesMut::new();
-        header.encode(&mut buf, header_version).map_err(|e| {
-            ProxyError::ProtocolEncode {
+        header
+            .encode(&mut buf, header_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
                 message: format!("failed to encode SASL handshake header: {e}"),
-            }
-        })?;
-        request.encode(&mut buf, api_version).map_err(|e| {
-            ProxyError::ProtocolEncode {
+            })?;
+        request
+            .encode(&mut buf, api_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
                 message: format!("failed to encode SASL handshake request: {e}"),
-            }
-        })?;
+            })?;
 
         // Send the request and receive response
         let response_bytes = self.send_raw_bytes(&buf).await?;
 
         // Skip correlation ID (first 4 bytes) and decode response
         let mut response_data = Bytes::copy_from_slice(&response_bytes[4..]);
-        let response = SaslHandshakeResponse::decode(&mut response_data, api_version).map_err(
-            |e| ProxyError::ProtocolDecode {
-                message: format!("failed to decode SASL handshake response: {e}"),
-            },
-        )?;
+        let response =
+            SaslHandshakeResponse::decode(&mut response_data, api_version).map_err(|e| {
+                ProxyError::ProtocolDecode {
+                    message: format!("failed to decode SASL handshake response: {e}"),
+                }
+            })?;
 
         Ok(response)
     }
@@ -364,16 +365,16 @@ impl BrokerConnection {
 
         // Encode the request with the correct header version
         let mut buf = BytesMut::new();
-        header.encode(&mut buf, header_version).map_err(|e| {
-            ProxyError::ProtocolEncode {
+        header
+            .encode(&mut buf, header_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
                 message: format!("failed to encode SASL authenticate header: {e}"),
-            }
-        })?;
-        request.encode(&mut buf, api_version).map_err(|e| {
-            ProxyError::ProtocolEncode {
+            })?;
+        request
+            .encode(&mut buf, api_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
                 message: format!("failed to encode SASL authenticate request: {e}"),
-            }
-        })?;
+            })?;
 
         // Send the request and receive response
         let response_bytes = self.send_raw_bytes(&buf).await?;
@@ -381,11 +382,12 @@ impl BrokerConnection {
         // Skip correlation ID (first 4 bytes) and decode response
         // Note: Response header version follows the same rules
         let mut response_data = Bytes::copy_from_slice(&response_bytes[4..]);
-        let response = SaslAuthenticateResponse::decode(&mut response_data, api_version).map_err(
-            |e| ProxyError::ProtocolDecode {
-                message: format!("failed to decode SASL authenticate response: {e}"),
-            },
-        )?;
+        let response =
+            SaslAuthenticateResponse::decode(&mut response_data, api_version).map_err(|e| {
+                ProxyError::ProtocolDecode {
+                    message: format!("failed to decode SASL authenticate response: {e}"),
+                }
+            })?;
 
         // Check for authentication errors
         if response.error_code != 0 {
@@ -422,19 +424,26 @@ impl BrokerConnection {
         write_buf.put_u32(request_bytes.len() as u32);
         write_buf.extend_from_slice(request_bytes);
 
-        stream.write_all(&write_buf).await.map_err(|e| {
-            ProxyError::Connection(e)
-        })?;
+        stream
+            .write_all(&write_buf)
+            .await
+            .map_err(|e| ProxyError::Connection(e))?;
         stream.flush().await.map_err(ProxyError::Connection)?;
 
         // Read response length
         let mut len_buf = [0u8; 4];
-        stream.read_exact(&mut len_buf).await.map_err(ProxyError::Connection)?;
+        stream
+            .read_exact(&mut len_buf)
+            .await
+            .map_err(ProxyError::Connection)?;
         let response_len = u32::from_be_bytes(len_buf) as usize;
 
         // Read response body
         let mut response_buf = vec![0u8; response_len];
-        stream.read_exact(&mut response_buf).await.map_err(ProxyError::Connection)?;
+        stream
+            .read_exact(&mut response_buf)
+            .await
+            .map_err(ProxyError::Connection)?;
 
         Ok(response_buf)
     }
@@ -475,23 +484,28 @@ impl BrokerConnection {
                 message: "request too short".to_string(),
             });
         }
-        let correlation_id =
-            i32::from_be_bytes([request_bytes[4], request_bytes[5], request_bytes[6], request_bytes[7]]);
+        let correlation_id = i32::from_be_bytes([
+            request_bytes[4],
+            request_bytes[5],
+            request_bytes[6],
+            request_bytes[7],
+        ]);
 
-        debug!(correlation_id, request_len = request_bytes.len(), "sending request");
+        debug!(
+            correlation_id,
+            request_len = request_bytes.len(),
+            "sending request"
+        );
 
         // Write request with length prefix
         let mut write_buf = BytesMut::with_capacity(4 + request_bytes.len());
         write_buf.put_u32(request_bytes.len() as u32);
         write_buf.extend_from_slice(request_bytes);
 
-        let write_result = timeout(
-            self.request_timeout,
-            async {
-                stream.write_all(&write_buf).await?;
-                stream.flush().await
-            },
-        )
+        let write_result = timeout(self.request_timeout, async {
+            stream.write_all(&write_buf).await?;
+            stream.flush().await
+        })
         .await;
 
         match write_result {

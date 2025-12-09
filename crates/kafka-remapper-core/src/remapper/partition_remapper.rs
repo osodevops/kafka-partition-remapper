@@ -178,10 +178,7 @@ impl PartitionRemapper {
     /// # Errors
     ///
     /// Returns an error if the virtual partition is out of range.
-    pub fn get_offset_range_for_virtual(
-        &self,
-        virtual_partition: i32,
-    ) -> RemapResult<(i64, i64)> {
+    pub fn get_offset_range_for_virtual(&self, virtual_partition: i32) -> RemapResult<(i64, i64)> {
         let mapping = self.virtual_to_physical(virtual_partition)?;
         let start = (u64::from(mapping.virtual_group) * self.offset_range) as i64;
         let end = start + self.offset_range as i64;
@@ -485,10 +482,14 @@ mod tests {
 
         // Test at exact boundary - last valid offset for group 0
         let last_offset_group_0 = offset_range - 1;
-        let m = r.virtual_to_physical_offset(0, last_offset_group_0).unwrap();
+        let m = r
+            .virtual_to_physical_offset(0, last_offset_group_0)
+            .unwrap();
         assert_eq!(m.physical_offset, last_offset_group_0);
 
-        let back = r.physical_to_virtual(m.physical_partition, m.physical_offset).unwrap();
+        let back = r
+            .physical_to_virtual(m.physical_partition, m.physical_offset)
+            .unwrap();
         assert_eq!(back.virtual_partition, 0);
         assert_eq!(back.virtual_offset, last_offset_group_0);
 
@@ -497,7 +498,9 @@ mod tests {
         assert_eq!(m.physical_offset, offset_range);
         assert_eq!(m.physical_partition, 0);
 
-        let back = r.physical_to_virtual(m.physical_partition, m.physical_offset).unwrap();
+        let back = r
+            .physical_to_virtual(m.physical_partition, m.physical_offset)
+            .unwrap();
         assert_eq!(back.virtual_partition, 10);
         assert_eq!(back.virtual_offset, 0);
     }
@@ -515,7 +518,9 @@ mod tests {
         // Test with large but valid offset
         let large_offset = (1i64 << 39) + 12345;
         let m = r.virtual_to_physical_offset(5, large_offset).unwrap();
-        let back = r.physical_to_virtual(m.physical_partition, m.physical_offset).unwrap();
+        let back = r
+            .physical_to_virtual(m.physical_partition, m.physical_offset)
+            .unwrap();
 
         assert_eq!(back.virtual_partition, 5);
         assert_eq!(back.virtual_offset, large_offset);
@@ -630,8 +635,7 @@ mod tests {
             let mapping = r.virtual_to_physical_offset(v_part, 0).unwrap();
 
             // Offset 0 in virtual should map to (virtual_group * offset_range)
-            let expected_offset =
-                (v_part as i64 / 10) * (r.offset_range() as i64);
+            let expected_offset = (v_part as i64 / 10) * (r.offset_range() as i64);
             assert_eq!(
                 mapping.physical_offset, expected_offset,
                 "Zero offset for virtual partition {v_part} should map to {expected_offset}"
@@ -685,10 +689,7 @@ mod tests {
                 mapping.physical_partition < 100,
                 "Physical partition should be < 100"
             );
-            assert!(
-                mapping.virtual_group < 100,
-                "Virtual group should be < 100"
-            );
+            assert!(mapping.virtual_group < 100, "Virtual group should be < 100");
         }
 
         // Verify each physical partition hosts exactly 100 virtual partitions
@@ -708,12 +709,7 @@ mod tests {
         // Same input should always produce same output
         let r = remapper();
 
-        let test_cases: Vec<(i32, i64)> = vec![
-            (0, 0),
-            (27, 5000),
-            (99, 999_999),
-            (50, 12345),
-        ];
+        let test_cases: Vec<(i32, i64)> = vec![(0, 0), (27, 5000), (99, 999_999), (50, 12345)];
 
         for (v_part, v_offset) in test_cases {
             let result1 = r.virtual_to_physical_offset(v_part, v_offset).unwrap();
@@ -729,8 +725,12 @@ mod tests {
             );
 
             // Also test reverse mapping determinism
-            let back1 = r.physical_to_virtual(result1.physical_partition, result1.physical_offset).unwrap();
-            let back2 = r.physical_to_virtual(result2.physical_partition, result2.physical_offset).unwrap();
+            let back1 = r
+                .physical_to_virtual(result1.physical_partition, result1.physical_offset)
+                .unwrap();
+            let back2 = r
+                .physical_to_virtual(result2.physical_partition, result2.physical_offset)
+                .unwrap();
 
             assert_eq!(back1.virtual_partition, back2.virtual_partition);
             assert_eq!(back1.virtual_offset, back2.virtual_offset);
@@ -780,9 +780,9 @@ mod tests {
         let r = PartitionRemapper::new(&config);
 
         let test_cases: Vec<(i32, i64)> = vec![
-            (0, 0),              // First partition, offset 0
-            (127, 5000),         // Mid partition
-            (999, 999_999),      // Last partition, large offset
+            (0, 0),                 // First partition, offset 0
+            (127, 5000),            // Mid partition
+            (999, 999_999),         // Last partition, large offset
             (500, 999_999_999_999), // Near boundary
         ];
 
@@ -791,7 +791,9 @@ mod tests {
             let phys = r.virtual_to_physical_offset(v_part, v_offset).unwrap();
 
             // Physical → Virtual
-            let back = r.physical_to_virtual(phys.physical_partition, phys.physical_offset).unwrap();
+            let back = r
+                .physical_to_virtual(phys.physical_partition, phys.physical_offset)
+                .unwrap();
 
             // Should match original
             assert_eq!(

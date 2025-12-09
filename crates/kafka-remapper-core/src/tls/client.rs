@@ -101,19 +101,18 @@ fn build_client_config(config: &BrokerTlsConfig) -> TlsResult<ClientConfig> {
     let builder = ClientConfig::builder().with_root_certificates(root_store);
 
     // Check if we need client certificates (mTLS to broker)
-    let client_config = if let (Some(cert_path), Some(key_path)) =
-        (&config.cert_path, &config.key_path)
-    {
-        debug!("loading client certificate for mTLS");
-        let certs = load_certificates(cert_path)?;
-        let key = load_private_key(key_path)?;
+    let client_config =
+        if let (Some(cert_path), Some(key_path)) = (&config.cert_path, &config.key_path) {
+            debug!("loading client certificate for mTLS");
+            let certs = load_certificates(cert_path)?;
+            let key = load_private_key(key_path)?;
 
-        builder
-            .with_client_auth_cert(certs, key)
-            .map_err(|e| TlsError::Config(format!("failed to configure client auth: {e}")))?
-    } else {
-        builder.with_no_client_auth()
-    };
+            builder
+                .with_client_auth_cert(certs, key)
+                .map_err(|e| TlsError::Config(format!("failed to configure client auth: {e}")))?
+        } else {
+            builder.with_no_client_auth()
+        };
 
     Ok(client_config)
 }
@@ -326,11 +325,7 @@ z6oCYD97ZaLrS2AUbvCJZAw=
         let connector = TlsConnector::new(&config);
         // The test cert is a valid PEM cert, so it should load successfully.
         // Rustls adds it to the root store even without CA:TRUE extension.
-        assert!(
-            connector.is_ok(),
-            "Expected Ok, got: {:?}",
-            connector.err()
-        );
+        assert!(connector.is_ok(), "Expected Ok, got: {:?}", connector.err());
     }
 
     #[test]
@@ -344,11 +339,7 @@ z6oCYD97ZaLrS2AUbvCJZAw=
             insecure_skip_verify: false,
         };
         let connector = TlsConnector::new(&config);
-        assert!(
-            connector.is_ok(),
-            "Expected Ok, got: {:?}",
-            connector.err()
-        );
+        assert!(connector.is_ok(), "Expected Ok, got: {:?}", connector.err());
     }
 
     #[test]

@@ -116,10 +116,10 @@ impl FetchHandler {
 
                     // Translate log start offset
                     if virtual_data.log_start_offset >= 0 {
-                        if let Ok(vm) = self.remapper.physical_to_virtual(
-                            physical_partition,
-                            virtual_data.log_start_offset,
-                        ) {
+                        if let Ok(vm) = self
+                            .remapper
+                            .physical_to_virtual(physical_partition, virtual_data.log_start_offset)
+                        {
                             if vm.virtual_partition == info.virtual_partition {
                                 virtual_data.log_start_offset = vm.virtual_offset;
                             }

@@ -60,12 +60,7 @@ async fn test_virtual_offset_commit_roundtrip() {
     let harness = ProxyTestHarness::new().await;
 
     // Test multiple partitions
-    let test_cases = vec![
-        (0, 0),
-        (27, 5000),
-        (50, 12345),
-        (99, 999_999),
-    ];
+    let test_cases = vec![(0, 0), (27, 5000), (50, 12345), (99, 999_999)];
 
     for (v_part, v_offset) in test_cases {
         // Commit (virtual -> physical)
@@ -166,7 +161,10 @@ async fn test_offset_commit_high_compression() {
         .await;
 
     // Virtual 550 -> Physical 50, group 5
-    let physical = harness.remapper.virtual_to_physical_offset(550, 1000).unwrap();
+    let physical = harness
+        .remapper
+        .virtual_to_physical_offset(550, 1000)
+        .unwrap();
     assert_eq!(physical.physical_partition, 50);
     assert_eq!(physical.virtual_group, 5);
 }

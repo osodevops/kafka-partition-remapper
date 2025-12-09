@@ -325,7 +325,11 @@ impl KafkaTestEnvironment {
 
             if let Ok(producer) = producer_result {
                 // Try a metadata request to verify Kafka is truly ready
-                if producer.client().fetch_metadata(None, Duration::from_secs(5)).is_ok() {
+                if producer
+                    .client()
+                    .fetch_metadata(None, Duration::from_secs(5))
+                    .is_ok()
+                {
                     break;
                 }
             }

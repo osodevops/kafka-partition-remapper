@@ -143,11 +143,9 @@ impl ProtocolHandler for MetadataHandler {
 
         // Decode broker response (skip correlation ID - first 4 bytes)
         let mut response_bytes = response_body.slice(4..);
-        let mut response =
-            MetadataResponse::decode(&mut response_bytes, frame.api_version).map_err(|e| {
-                ProxyError::ProtocolDecode {
-                    message: e.to_string(),
-                }
+        let mut response = MetadataResponse::decode(&mut response_bytes, frame.api_version)
+            .map_err(|e| ProxyError::ProtocolDecode {
+                message: e.to_string(),
             })?;
 
         debug!(

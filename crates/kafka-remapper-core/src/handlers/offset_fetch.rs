@@ -149,11 +149,9 @@ impl ProtocolHandler for OffsetFetchHandler {
 
         // Decode the request
         let mut request_bytes = bytes::Bytes::copy_from_slice(&frame.bytes[8..]);
-        let mut request =
-            OffsetFetchRequest::decode(&mut request_bytes, frame.api_version).map_err(|e| {
-                ProxyError::ProtocolDecode {
-                    message: format!("failed to decode OffsetFetchRequest: {}", e),
-                }
+        let mut request = OffsetFetchRequest::decode(&mut request_bytes, frame.api_version)
+            .map_err(|e| ProxyError::ProtocolDecode {
+                message: format!("failed to decode OffsetFetchRequest: {}", e),
             })?;
 
         // Translate virtual -> physical and save mappings
@@ -173,11 +171,9 @@ impl ProtocolHandler for OffsetFetchHandler {
 
         // Decode response (skip correlation ID)
         let mut response_bytes = response_body.slice(4..);
-        let mut response =
-            OffsetFetchResponse::decode(&mut response_bytes, frame.api_version).map_err(|e| {
-                ProxyError::ProtocolDecode {
-                    message: format!("failed to decode OffsetFetchResponse: {}", e),
-                }
+        let mut response = OffsetFetchResponse::decode(&mut response_bytes, frame.api_version)
+            .map_err(|e| ProxyError::ProtocolDecode {
+                message: format!("failed to decode OffsetFetchResponse: {}", e),
             })?;
 
         // Translate physical offsets back to virtual
@@ -230,14 +226,12 @@ mod tests {
         let handler = OffsetFetchHandler::new(test_remapper(), test_pool());
 
         let mut request = OffsetFetchRequest::default();
-        request.group_id = kafka_protocol::messages::GroupId::from(StrBytes::from_static_str(
-            "test-group",
-        ));
+        request.group_id =
+            kafka_protocol::messages::GroupId::from(StrBytes::from_static_str("test-group"));
 
         let mut topic = OffsetFetchRequestTopic::default();
-        topic.name = kafka_protocol::messages::TopicName::from(StrBytes::from_static_str(
-            "test-topic",
-        ));
+        topic.name =
+            kafka_protocol::messages::TopicName::from(StrBytes::from_static_str("test-topic"));
         topic.partition_indexes = vec![27, 50]; // Virtual partitions
 
         request.topics = Some(vec![topic]);
@@ -270,9 +264,8 @@ mod tests {
 
         let mut response = OffsetFetchResponse::default();
         let mut topic = OffsetFetchResponseTopic::default();
-        topic.name = kafka_protocol::messages::TopicName::from(StrBytes::from_static_str(
-            "test-topic",
-        ));
+        topic.name =
+            kafka_protocol::messages::TopicName::from(StrBytes::from_static_str("test-topic"));
 
         // Physical offset for virtual partition 27
         // Virtual 27 is in group 2, so physical offset = 2 * offset_range + virtual_offset
@@ -287,13 +280,18 @@ mod tests {
         response.topics.push(topic);
 
         // Translate response
-        handler.translate_response(&mut response, &mappings).unwrap();
+        handler
+            .translate_response(&mut response, &mappings)
+            .unwrap();
 
         // Partition index should be back to virtual
         assert_eq!(response.topics[0].partitions[0].partition_index, 27);
 
         // Offset should be virtual
-        assert_eq!(response.topics[0].partitions[0].committed_offset, virtual_offset);
+        assert_eq!(
+            response.topics[0].partitions[0].committed_offset,
+            virtual_offset
+        );
     }
 
     #[test]
@@ -310,9 +308,8 @@ mod tests {
 
         let mut response = OffsetFetchResponse::default();
         let mut topic = OffsetFetchResponseTopic::default();
-        topic.name = kafka_protocol::messages::TopicName::from(StrBytes::from_static_str(
-            "test-topic",
-        ));
+        topic.name =
+            kafka_protocol::messages::TopicName::from(StrBytes::from_static_str("test-topic"));
 
         let mut partition = OffsetFetchResponsePartition::default();
         partition.partition_index = 2;
@@ -321,7 +318,9 @@ mod tests {
 
         response.topics.push(topic);
 
-        handler.translate_response(&mut response, &mappings).unwrap();
+        handler
+            .translate_response(&mut response, &mappings)
+            .unwrap();
 
         // Partition index should be back to virtual
         assert_eq!(response.topics[0].partitions[0].partition_index, 42);

@@ -169,9 +169,7 @@ async fn run_proxy(config: ProxyConfig) -> anyhow::Result<()> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("failed to listen for ctrl+c");
+        signal::ctrl_c().await.expect("failed to listen for ctrl+c");
     };
 
     #[cfg(unix)]

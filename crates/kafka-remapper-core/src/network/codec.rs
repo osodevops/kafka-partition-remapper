@@ -243,10 +243,7 @@ mod tests {
         // Length should be 8 (correlation_id + body)
         assert_eq!(u32::from_be_bytes([dst[0], dst[1], dst[2], dst[3]]), 8);
         // Correlation ID
-        assert_eq!(
-            i32::from_be_bytes([dst[4], dst[5], dst[6], dst[7]]),
-            12345
-        );
+        assert_eq!(i32::from_be_bytes([dst[4], dst[5], dst[6], dst[7]]), 12345);
         // Body
         assert_eq!(&dst[8..12], &[1, 2, 3, 4]);
     }

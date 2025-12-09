@@ -106,7 +106,10 @@ impl ConnectionHandler {
     ///
     /// For now, return a stub response. Will be implemented in Phase 5.
     async fn handle_api_versions(&self, frame: KafkaFrame) -> Result<ResponseFrame> {
-        debug!(correlation_id = frame.correlation_id, "handling ApiVersions");
+        debug!(
+            correlation_id = frame.correlation_id,
+            "handling ApiVersions"
+        );
 
         // TODO: Implement proper ApiVersions response in Phase 5
         // For now, return a minimal valid response

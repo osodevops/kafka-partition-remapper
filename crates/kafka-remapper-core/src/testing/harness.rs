@@ -42,7 +42,10 @@ impl ProxyTestHarness {
     pub async fn with_config(virtual_partitions: u32, physical_partitions: u32) -> Self {
         // Start mock broker
         let mut mock_broker = MockBroker::new("127.0.0.1:0");
-        let mock_broker_addr = mock_broker.start().await.expect("Failed to start mock broker");
+        let mock_broker_addr = mock_broker
+            .start()
+            .await
+            .expect("Failed to start mock broker");
 
         // Create config
         let config = ProxyConfig {
@@ -174,7 +177,8 @@ impl TestHarnessBuilder {
 
     /// Build the test harness.
     pub async fn build(self) -> ProxyTestHarness {
-        let mut harness = ProxyTestHarness::with_config(self.virtual_partitions, self.physical_partitions).await;
+        let mut harness =
+            ProxyTestHarness::with_config(self.virtual_partitions, self.physical_partitions).await;
 
         // If custom offset range, recreate remapper
         if self.offset_range != (1 << 40) {

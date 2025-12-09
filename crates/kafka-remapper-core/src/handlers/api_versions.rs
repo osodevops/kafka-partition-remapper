@@ -135,8 +135,8 @@ impl ProtocolHandler for ApiVersionsHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use bytes::Bytes;
     use crate::config::{KafkaConfig, SecurityProtocol};
+    use bytes::Bytes;
 
     fn test_pool() -> Arc<BrokerPool> {
         Arc::new(BrokerPool::new(KafkaConfig {

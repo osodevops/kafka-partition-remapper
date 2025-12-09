@@ -21,10 +21,10 @@ async fn test_produce_multiple_partitions() {
 
     // Test mapping multiple partitions
     let test_cases = vec![
-        (15, 5, 1),  // virtual 15 -> physical 5, group 1
-        (42, 2, 4),  // virtual 42 -> physical 2, group 4
-        (99, 9, 9),  // virtual 99 -> physical 9, group 9
-        (0, 0, 0),   // virtual 0 -> physical 0, group 0
+        (15, 5, 1), // virtual 15 -> physical 5, group 1
+        (42, 2, 4), // virtual 42 -> physical 2, group 4
+        (99, 9, 9), // virtual 99 -> physical 9, group 9
+        (0, 0, 0),  // virtual 0 -> physical 0, group 0
     ];
 
     for (virtual_part, expected_physical, expected_group) in test_cases {
@@ -65,8 +65,7 @@ async fn test_produce_offset_response_translation() {
 
     // Physical offset = group * offset_range + virtual_offset
     // = 5 * (2^40) + 1000
-    let expected_physical_offset =
-        5i64 * (harness.remapper.offset_range() as i64) + virtual_offset;
+    let expected_physical_offset = 5i64 * (harness.remapper.offset_range() as i64) + virtual_offset;
     assert_eq!(physical.physical_offset, expected_physical_offset);
 
     // Now translate back - should get original values

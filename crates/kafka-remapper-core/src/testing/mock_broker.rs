@@ -122,7 +122,10 @@ impl MockBroker {
 
     /// Register a response handler for a specific API key.
     pub async fn register_handler(&self, api_key: i16, handler: ResponseGenerator) {
-        self.response_handlers.write().await.insert(api_key, handler);
+        self.response_handlers
+            .write()
+            .await
+            .insert(api_key, handler);
     }
 
     /// Get all recorded calls.
@@ -581,12 +584,22 @@ mod tests {
 
         // Check correlation ID
         assert_eq!(
-            i32::from_be_bytes([response_buf[0], response_buf[1], response_buf[2], response_buf[3]]),
+            i32::from_be_bytes([
+                response_buf[0],
+                response_buf[1],
+                response_buf[2],
+                response_buf[3]
+            ]),
             100
         );
         // Check custom data
         assert_eq!(
-            i32::from_be_bytes([response_buf[4], response_buf[5], response_buf[6], response_buf[7]]),
+            i32::from_be_bytes([
+                response_buf[4],
+                response_buf[5],
+                response_buf[6],
+                response_buf[7]
+            ]),
             12345
         );
 

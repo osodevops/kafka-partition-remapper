@@ -110,8 +110,7 @@ impl MetadataRefresher {
             .with_client_id(Some(StrBytes::from_static_str("kafka-partition-proxy")));
 
         // Build metadata request (empty topics = all topics)
-        let request = MetadataRequest::default()
-            .with_allow_auto_topic_creation(false);
+        let request = MetadataRequest::default().with_allow_auto_topic_creation(false);
 
         // Encode header and request
         let mut body = BytesMut::new();
@@ -204,11 +203,7 @@ mod tests {
         let refresher = MetadataRefresher::new(pool, 0, rx);
 
         // Should return immediately when interval is 0
-        let result = tokio::time::timeout(
-            Duration::from_millis(100),
-            refresher.run(),
-        )
-        .await;
+        let result = tokio::time::timeout(Duration::from_millis(100), refresher.run()).await;
 
         assert!(result.is_ok(), "should complete immediately when disabled");
     }

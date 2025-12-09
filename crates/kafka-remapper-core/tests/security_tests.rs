@@ -9,7 +9,9 @@
 use std::time::Duration;
 
 use kafka_remapper_core::broker::BrokerConnection;
-use kafka_remapper_core::config::{BrokerSaslConfig, BrokerTlsConfig, SaslMechanism, SecurityProtocol};
+use kafka_remapper_core::config::{
+    BrokerSaslConfig, BrokerTlsConfig, SaslMechanism, SecurityProtocol,
+};
 
 /// Test that a plaintext connection can be established.
 #[tokio::test]
@@ -35,7 +37,10 @@ async fn test_ssl_connection_config() {
         Duration::from_secs(30),
     );
 
-    assert!(result.is_ok(), "Should be able to create SSL connection config");
+    assert!(
+        result.is_ok(),
+        "Should be able to create SSL connection config"
+    );
     let conn = result.unwrap();
     assert_eq!(conn.broker_id(), 1);
 }
@@ -59,7 +64,10 @@ async fn test_sasl_plaintext_connection_config() {
         Duration::from_secs(30),
     );
 
-    assert!(result.is_ok(), "Should be able to create SASL_PLAINTEXT connection config");
+    assert!(
+        result.is_ok(),
+        "Should be able to create SASL_PLAINTEXT connection config"
+    );
 }
 
 /// Test that a SASL_SSL connection configuration can be created.
@@ -82,7 +90,10 @@ async fn test_sasl_ssl_connection_config() {
         Duration::from_secs(30),
     );
 
-    assert!(result.is_ok(), "Should be able to create SASL_SSL connection config");
+    assert!(
+        result.is_ok(),
+        "Should be able to create SASL_SSL connection config"
+    );
 }
 
 /// Test SASL/PLAIN credential format.
@@ -136,8 +147,8 @@ fn test_security_protocol_requires_sasl() {
 #[tokio::test]
 #[ignore = "Requires configured Kafka cluster with SASL_SSL"]
 async fn test_real_sasl_ssl_connection() {
-    let bootstrap_servers = std::env::var("KAFKA_BOOTSTRAP_SERVERS")
-        .expect("KAFKA_BOOTSTRAP_SERVERS env var required");
+    let bootstrap_servers =
+        std::env::var("KAFKA_BOOTSTRAP_SERVERS").expect("KAFKA_BOOTSTRAP_SERVERS env var required");
     let api_key = std::env::var("KAFKA_API_KEY").expect("KAFKA_API_KEY env var required");
     let api_secret = std::env::var("KAFKA_API_SECRET").expect("KAFKA_API_SECRET env var required");
 
@@ -160,7 +171,11 @@ async fn test_real_sasl_ssl_connection() {
     .expect("Failed to create connection");
 
     let result = conn.connect().await;
-    assert!(result.is_ok(), "Should connect to SASL_SSL broker: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "Should connect to SASL_SSL broker: {:?}",
+        result.err()
+    );
 
     conn.disconnect().await;
 }

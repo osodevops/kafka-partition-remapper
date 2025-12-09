@@ -11,9 +11,7 @@ use kafka_remapper_core::remapper::PartitionRemapper;
 use kafka_remapper_core::testing::{api_keys, MockBroker, ProxyTestHarness, TestHarnessBuilder};
 
 /// Helper to create a metadata handler for tests.
-fn create_metadata_handler(
-    harness: &ProxyTestHarness,
-) -> MetadataHandler {
+fn create_metadata_handler(harness: &ProxyTestHarness) -> MetadataHandler {
     MetadataHandler::new(
         harness.remapper.clone(),
         harness.broker_pool.clone(),
