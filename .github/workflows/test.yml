@@ -51,7 +51,7 @@ jobs:
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Check compilation
-        run: cargo check --all-targets
+        run: cargo check --all-targets --all-features
 
   # Unit tests - fast, no external dependencies
   unit-tests:
