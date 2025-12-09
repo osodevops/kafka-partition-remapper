@@ -1,0 +1,35 @@
+[package]
+name = "kafka-remapper-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "CLI for Kafka partition remapping proxy"
+
+[[bin]]
+name = "kafka-partition-proxy"
+path = "src/main.rs"
+
+[dependencies]
+kafka-remapper-core = { path = "../kafka-remapper-core" }
+
+# Async
+tokio = { workspace = true }
+
+# CLI
+clap = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# Error handling
+anyhow = { workspace = true }
+
+# HTTP server for metrics
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+
+[lints]
+workspace = true

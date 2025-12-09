@@ -1,0 +1,11 @@
+# Prometheus configuration for Kafka Partition Remapping Proxy
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'kafka-proxy'
+    static_configs:
+      - targets: ['kafka-proxy:9090']
+    metrics_path: /

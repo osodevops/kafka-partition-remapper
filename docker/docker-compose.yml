@@ -1,0 +1,70 @@
+services:
+  # Kafka in KRaft mode (combined controller + broker)
+  kafka:
+    image: confluentinc/cp-server:latest
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "29092:29092"
+      - "9093:9093"
+    environment:
+      # KRaft settings
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      # Listeners
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Replication settings (single node)
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_CLUSTER_LINK_METADATA_TOPIC_REPLICATION_FACTOR: 1
+      # Performance
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Disable confluent telemetry for local dev
+      KAFKA_CONFLUENT_REPORTERS_TELEMETRY_AUTO_ENABLE: 'false'
+      KAFKA_CONFLUENT_SECURITY_EVENT_LOGGER_ENABLE: 'false'
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  # Kafka Partition Remapping Proxy
+  kafka-proxy:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: kafka-proxy
+    ports:
+      - "19092:9092"  # Proxy port (mapped to host 19092)
+      - "9090:9090"   # Metrics port
+    environment:
+      RUST_LOG: info
+    volumes:
+      - ./config-docker.yaml:/etc/kafka-proxy/config.yaml:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+    command: ["--config", "/etc/kafka-proxy/config.yaml"]
+
+  # Prometheus (optional, for metrics visualization)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - kafka-proxy
+    profiles:
+      - monitoring

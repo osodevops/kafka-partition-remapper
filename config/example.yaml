@@ -1,0 +1,50 @@
+# Kafka Partition Remapping Proxy Configuration
+#
+# This proxy sits between Kafka clients and a managed Kafka cluster,
+# exposing virtual partitions that map to fewer physical partitions.
+
+listen:
+  # Address to bind the proxy to
+  address: "0.0.0.0:9092"
+  # Address that clients should use to connect back to this proxy.
+  # This is returned in Metadata responses so clients reconnect to the proxy
+  # instead of directly to Kafka brokers.
+  # If not set, defaults to the listen address.
+  # Example: "proxy.example.com:9092" or "localhost:9092"
+  advertised_address: "localhost:9092"
+  # Maximum concurrent client connections
+  max_connections: 1000
+
+kafka:
+  # Bootstrap servers for the real Kafka cluster
+  bootstrap_servers:
+    - "localhost:29092"
+  # Connection timeout in milliseconds
+  connection_timeout_ms: 10000
+  # Request timeout in milliseconds
+  request_timeout_ms: 30000
+  # Background metadata refresh interval in seconds
+  # Set to 0 to disable background refresh (only refresh on client requests)
+  # Default: 30 seconds
+  metadata_refresh_interval_secs: 30
+
+mapping:
+  # Number of virtual partitions exposed to clients
+  virtual_partitions: 1000
+  # Number of physical partitions in the Kafka cluster
+  physical_partitions: 100
+  # Offset range per virtual partition (default: 2^40)
+  # This determines max messages per virtual partition before overlap
+  offset_range: 1099511627776
+
+metrics:
+  # Enable Prometheus metrics endpoint
+  enabled: true
+  # Address for metrics HTTP server
+  address: "0.0.0.0:9090"
+
+logging:
+  # Log level: trace, debug, info, warn, error
+  level: "info"
+  # Output logs in JSON format (for production)
+  json: false

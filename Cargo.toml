@@ -1,0 +1,62 @@
+[workspace]
+resolver = "2"
+members = ["crates/kafka-remapper-core", "crates/kafka-remapper-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "Apache-2.0"
+repository = "https://github.com/osodevops/kafka-partition-remapper"
+description = "Kafka partition remapping proxy for cost optimization"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["full", "tracing"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+futures = "0.3"
+async-trait = "0.1"
+
+# Kafka protocol
+kafka-protocol = "0.17"
+bytes = "1.9"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging/tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Metrics
+prometheus = "0.13"
+
+# CLI
+clap = { version = "4.5", features = ["derive"] }
+
+# HTTP server for metrics
+hyper = { version = "1.5", features = ["server", "http1"] }
+hyper-util = { version = "0.1", features = ["tokio", "server", "server-auto"] }
+http-body-util = "0.1"
+
+# Utilities
+uuid = { version = "1.11", features = ["v4"] }
+dashmap = "6.1"
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+# Allow some common patterns
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

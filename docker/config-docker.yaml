@@ -1,0 +1,31 @@
+# Docker configuration for Kafka Partition Remapping Proxy
+# Used with docker-compose for local testing
+
+listen:
+  address: "0.0.0.0:9092"
+  # Clients connecting via docker host should use this address
+  # For docker-compose: kafka-proxy:9092 (container name)
+  # For host access: localhost:19092 (mapped port)
+  advertised_address: "kafka-proxy:9092"
+  max_connections: 1000
+
+kafka:
+  bootstrap_servers:
+    - "kafka:9092"
+  connection_timeout_ms: 10000
+  request_timeout_ms: 30000
+  # Background metadata refresh (discover broker changes)
+  metadata_refresh_interval_secs: 30
+
+mapping:
+  virtual_partitions: 100
+  physical_partitions: 10
+  offset_range: 1099511627776  # 2^40
+
+metrics:
+  enabled: true
+  address: "0.0.0.0:9090"
+
+logging:
+  level: "info"
+  json: false

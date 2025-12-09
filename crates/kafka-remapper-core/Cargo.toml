@@ -1,0 +1,59 @@
+[package]
+name = "kafka-remapper-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Core library for Kafka partition remapping proxy"
+
+[features]
+default = []
+# Enable test utilities (ProxyTestHarness, MockBroker)
+testing = []
+
+[dependencies]
+# Async
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+async-trait = { workspace = true }
+
+# Kafka protocol
+kafka-protocol = { workspace = true }
+bytes = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging/Tracing
+tracing = { workspace = true }
+
+# Metrics
+prometheus = { workspace = true }
+
+# Utilities
+dashmap = { workspace = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+tempfile = "3.14"
+proptest = "1.5"
+# E2E testing with real Kafka (requires Docker)
+testcontainers = "0.23"
+testcontainers-modules = { version = "0.11", features = ["kafka"] }
+rdkafka = { version = "0.36", features = ["cmake-build"] }
+
+[[bench]]
+name = "partition_remapping"
+harness = false
+
+[dev-dependencies.criterion]
+version = "0.5"
+features = ["html_reports"]
+
+[lints]
+workspace = true
