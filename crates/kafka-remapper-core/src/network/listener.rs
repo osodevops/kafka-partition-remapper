@@ -129,7 +129,9 @@ impl ProxyListener {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{KafkaConfig, ListenConfig, LoggingConfig, MappingConfig, MetricsConfig};
+    use crate::config::{
+        KafkaConfig, ListenConfig, LoggingConfig, MappingConfig, MetricsConfig, SecurityProtocol,
+    };
     use std::time::Duration;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpStream;
@@ -147,6 +149,9 @@ mod tests {
                 connection_timeout_ms: 10000,
                 request_timeout_ms: 30000,
                 metadata_refresh_interval_secs: 0,
+                security_protocol: SecurityProtocol::Plaintext,
+                tls: None,
+                sasl: None,
             },
             mapping: MappingConfig {
                 virtual_partitions: 100,

@@ -161,6 +161,7 @@ impl MetadataRefresher {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::SecurityProtocol;
 
     #[test]
     fn test_build_metadata_request() {
@@ -169,6 +170,9 @@ mod tests {
             connection_timeout_ms: 1000,
             request_timeout_ms: 5000,
             metadata_refresh_interval_secs: 30,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         }));
 
         let (_tx, rx) = watch::channel(false);
@@ -191,6 +195,9 @@ mod tests {
             connection_timeout_ms: 1000,
             request_timeout_ms: 5000,
             metadata_refresh_interval_secs: 0,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         }));
 
         let (_tx, rx) = watch::channel(false);

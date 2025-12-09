@@ -97,9 +97,77 @@ pub enum ProxyError {
     #[error("remapping error: {0}")]
     Remap(#[from] RemapError),
 
+    /// TLS error.
+    #[error("TLS error: {0}")]
+    Tls(#[from] TlsError),
+
+    /// SASL authentication error.
+    #[error("authentication error: {0}")]
+    Auth(#[from] AuthError),
+
     /// Shutdown signal received.
     #[error("proxy shutting down")]
     Shutdown,
+}
+
+/// Errors related to TLS/SSL operations.
+#[derive(Error, Debug)]
+pub enum TlsError {
+    /// Failed to load certificate file.
+    #[error("failed to load certificate from '{path}': {message}")]
+    CertificateLoad { path: String, message: String },
+
+    /// Failed to load private key file.
+    #[error("failed to load private key from '{path}': {message}")]
+    PrivateKeyLoad { path: String, message: String },
+
+    /// Failed to build TLS configuration.
+    #[error("TLS configuration error: {0}")]
+    Config(String),
+
+    /// TLS handshake failed.
+    #[error("TLS handshake failed: {0}")]
+    Handshake(String),
+
+    /// Invalid certificate.
+    #[error("invalid certificate: {0}")]
+    InvalidCertificate(String),
+
+    /// No certificates found in file.
+    #[error("no certificates found in '{0}'")]
+    NoCertificates(String),
+
+    /// No private keys found in file.
+    #[error("no private keys found in '{0}'")]
+    NoPrivateKeys(String),
+}
+
+/// Errors related to SASL authentication.
+#[derive(Error, Debug)]
+pub enum AuthError {
+    /// SASL mechanism not supported.
+    #[error("unsupported SASL mechanism: {0}")]
+    UnsupportedMechanism(String),
+
+    /// Authentication failed (invalid credentials).
+    #[error("authentication failed: {0}")]
+    AuthenticationFailed(String),
+
+    /// SASL handshake failed.
+    #[error("SASL handshake error: {0}")]
+    HandshakeError(String),
+
+    /// Missing required configuration.
+    #[error("missing SASL configuration: {0}")]
+    MissingConfig(String),
+
+    /// Invalid SASL protocol message.
+    #[error("invalid SASL message: {0}")]
+    InvalidMessage(String),
+
+    /// Unexpected error during authentication.
+    #[error("unexpected authentication error: {0}")]
+    Unexpected(String),
 }
 
 /// Errors specific to partition/offset remapping operations.
@@ -130,6 +198,12 @@ pub type ConfigResult<T> = std::result::Result<T, ConfigError>;
 
 /// Result type alias for remapping operations.
 pub type RemapResult<T> = std::result::Result<T, RemapError>;
+
+/// Result type alias for TLS operations.
+pub type TlsResult<T> = std::result::Result<T, TlsError>;
+
+/// Result type alias for authentication operations.
+pub type AuthResult<T> = std::result::Result<T, AuthError>;
 
 #[cfg(test)]
 mod tests {
@@ -167,5 +241,36 @@ mod tests {
         let remap_err = RemapError::NegativePartition(-1);
         let proxy_err: ProxyError = remap_err.into();
         assert!(matches!(proxy_err, ProxyError::Remap(_)));
+    }
+
+    #[test]
+    fn test_proxy_error_from_tls() {
+        let tls_err = TlsError::Config("test error".to_string());
+        let proxy_err: ProxyError = tls_err.into();
+        assert!(matches!(proxy_err, ProxyError::Tls(_)));
+    }
+
+    #[test]
+    fn test_proxy_error_from_auth() {
+        let auth_err = AuthError::AuthenticationFailed("invalid credentials".to_string());
+        let proxy_err: ProxyError = auth_err.into();
+        assert!(matches!(proxy_err, ProxyError::Auth(_)));
+    }
+
+    #[test]
+    fn test_tls_error_display() {
+        let err = TlsError::CertificateLoad {
+            path: "/etc/ssl/cert.pem".to_string(),
+            message: "file not found".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("/etc/ssl/cert.pem"));
+        assert!(msg.contains("file not found"));
+    }
+
+    #[test]
+    fn test_auth_error_display() {
+        let err = AuthError::UnsupportedMechanism("GSSAPI".to_string());
+        assert!(err.to_string().contains("GSSAPI"));
     }
 }

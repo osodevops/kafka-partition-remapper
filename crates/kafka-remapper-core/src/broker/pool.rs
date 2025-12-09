@@ -38,6 +38,7 @@ impl BrokerPool {
     /// Connect to the Kafka cluster using bootstrap servers.
     ///
     /// Tries each bootstrap server in order until one succeeds.
+    /// Applies TLS and SASL configuration based on the security protocol.
     ///
     /// # Errors
     ///
@@ -47,16 +48,15 @@ impl BrokerPool {
         let request_timeout = Duration::from_millis(self.config.request_timeout_ms);
 
         for server in &self.config.bootstrap_servers {
-            let conn = BrokerConnection::with_timeouts(
-                -1, // Bootstrap uses -1 as broker ID
-                server.clone(),
-                connect_timeout,
-                request_timeout,
-            );
+            let conn = self.create_connection(-1, server.clone(), connect_timeout, request_timeout)?;
 
             match conn.connect().await {
                 Ok(()) => {
-                    info!(server = %server, "connected to bootstrap server");
+                    info!(
+                        server = %server,
+                        protocol = ?self.config.security_protocol,
+                        "connected to bootstrap server"
+                    );
                     *self.bootstrap.write().await = Some(Arc::new(conn));
                     return Ok(());
                 }
@@ -67,6 +67,36 @@ impl BrokerPool {
         }
 
         Err(ProxyError::NoBrokersAvailable)
+    }
+
+    /// Create a broker connection with the appropriate security configuration.
+    fn create_connection(
+        &self,
+        broker_id: i32,
+        address: String,
+        connect_timeout: Duration,
+        request_timeout: Duration,
+    ) -> Result<BrokerConnection> {
+        // Use security-aware connection if TLS or SASL is configured
+        if self.config.security_protocol != crate::config::SecurityProtocol::Plaintext {
+            BrokerConnection::with_security(
+                broker_id,
+                address,
+                self.config.security_protocol,
+                self.config.tls.as_ref(),
+                self.config.sasl.clone(),
+                connect_timeout,
+                request_timeout,
+            )
+        } else {
+            // Use simple connection for plaintext
+            Ok(BrokerConnection::with_timeouts(
+                broker_id,
+                address,
+                connect_timeout,
+                request_timeout,
+            ))
+        }
     }
 
     /// Get a connection to a specific broker by ID.
@@ -137,6 +167,7 @@ impl BrokerPool {
     /// Update the pool with discovered brokers.
     ///
     /// Call this after receiving a Metadata response to register all known brokers.
+    /// Applies the same TLS and SASL configuration as the bootstrap connection.
     pub async fn update_brokers(&self, brokers: Vec<BrokerInfo>) {
         let connect_timeout = Duration::from_millis(self.config.connection_timeout_ms);
         let request_timeout = Duration::from_millis(self.config.request_timeout_ms);
@@ -148,18 +179,30 @@ impl BrokerPool {
             }
 
             let address = format!("{}:{}", broker.host, broker.port);
-            let conn = BrokerConnection::with_timeouts(
+            let conn = match self.create_connection(
                 broker.node_id,
                 address.clone(),
                 connect_timeout,
                 request_timeout,
-            );
+            ) {
+                Ok(conn) => conn,
+                Err(e) => {
+                    warn!(
+                        broker_id = broker.node_id,
+                        address = %address,
+                        error = %e,
+                        "failed to create broker connection"
+                    );
+                    continue;
+                }
+            };
 
             match conn.connect().await {
                 Ok(()) => {
                     info!(
                         broker_id = broker.node_id,
                         address = %address,
+                        protocol = ?self.config.security_protocol,
                         "connected to broker"
                     );
                     self.connections.insert(broker.node_id, Arc::new(conn));
@@ -227,6 +270,7 @@ impl BrokerInfo {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::SecurityProtocol;
 
     fn test_config() -> KafkaConfig {
         KafkaConfig {
@@ -234,6 +278,9 @@ mod tests {
             connection_timeout_ms: 100,
             request_timeout_ms: 1000,
             metadata_refresh_interval_secs: 0,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         }
     }
 
@@ -265,6 +312,9 @@ mod tests {
             connection_timeout_ms: 100,
             request_timeout_ms: 1000,
             metadata_refresh_interval_secs: 0,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         };
         let pool = BrokerPool::new(config);
         let result = pool.connect().await;

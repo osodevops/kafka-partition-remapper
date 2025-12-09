@@ -11,7 +11,7 @@ use bytes::Bytes;
 use tokio::sync::RwLock;
 
 use crate::broker::BrokerPool;
-use crate::config::{KafkaConfig, ListenConfig, MappingConfig, ProxyConfig};
+use crate::config::{KafkaConfig, ListenConfig, MappingConfig, ProxyConfig, SecurityProtocol};
 use crate::remapper::PartitionRemapper;
 
 use super::mock_broker::{BrokerCall, MockBroker, ResponseGenerator};
@@ -56,6 +56,9 @@ impl ProxyTestHarness {
                 connection_timeout_ms: 5000,
                 request_timeout_ms: 10000,
                 metadata_refresh_interval_secs: 0, // Disable auto refresh
+                security_protocol: SecurityProtocol::Plaintext,
+                tls: None,
+                sasl: None,
             },
             mapping: MappingConfig {
                 virtual_partitions,

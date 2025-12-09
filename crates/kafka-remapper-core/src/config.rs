@@ -2,8 +2,9 @@
 //!
 //! Configuration is loaded from YAML files and validated before use.
 
+use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::error::{ConfigError, ConfigResult};
 
@@ -68,6 +69,145 @@ pub struct KafkaConfig {
     /// Default: 30 seconds.
     #[serde(default = "default_metadata_refresh_interval_secs")]
     pub metadata_refresh_interval_secs: u64,
+
+    /// Security protocol for broker connections.
+    #[serde(default)]
+    pub security_protocol: SecurityProtocol,
+
+    /// TLS configuration for broker connections (when using SSL or SASL_SSL).
+    #[serde(default)]
+    pub tls: Option<BrokerTlsConfig>,
+
+    /// SASL authentication configuration (when using SASL_PLAINTEXT or SASL_SSL).
+    #[serde(default)]
+    pub sasl: Option<BrokerSaslConfig>,
+}
+
+/// Security protocol for Kafka connections.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+#[serde(rename_all = "SCREAMING_SNAKE_CASE")]
+pub enum SecurityProtocol {
+    /// Plain TCP without encryption or authentication.
+    #[default]
+    Plaintext,
+    /// TLS encryption without SASL authentication.
+    Ssl,
+    /// SASL authentication without TLS encryption.
+    SaslPlaintext,
+    /// TLS encryption with SASL authentication.
+    SaslSsl,
+}
+
+impl SecurityProtocol {
+    /// Check if TLS is required for this protocol.
+    #[must_use]
+    pub fn requires_tls(&self) -> bool {
+        matches!(self, Self::Ssl | Self::SaslSsl)
+    }
+
+    /// Check if SASL is required for this protocol.
+    #[must_use]
+    pub fn requires_sasl(&self) -> bool {
+        matches!(self, Self::SaslPlaintext | Self::SaslSsl)
+    }
+}
+
+/// TLS configuration for broker connections.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BrokerTlsConfig {
+    /// Path to CA certificate file (PEM format) for verifying broker certificates.
+    /// If not set, uses the system's root certificates.
+    pub ca_cert_path: Option<PathBuf>,
+
+    /// Path to client certificate file (PEM format) for mTLS authentication.
+    pub cert_path: Option<PathBuf>,
+
+    /// Path to client private key file (PEM format) for mTLS authentication.
+    pub key_path: Option<PathBuf>,
+
+    /// Whether to skip server certificate verification (INSECURE - for testing only).
+    #[serde(default)]
+    pub insecure_skip_verify: bool,
+}
+
+impl Default for BrokerTlsConfig {
+    fn default() -> Self {
+        Self {
+            ca_cert_path: None,
+            cert_path: None,
+            key_path: None,
+            insecure_skip_verify: false,
+        }
+    }
+}
+
+/// SASL authentication mechanism.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize, Serialize)]
+pub enum SaslMechanism {
+    /// SASL/PLAIN - simple username/password authentication.
+    #[default]
+    #[serde(rename = "PLAIN")]
+    Plain,
+    /// SASL/SCRAM-SHA-256 - salted challenge-response authentication.
+    #[serde(rename = "SCRAM-SHA-256")]
+    ScramSha256,
+    /// SASL/SCRAM-SHA-512 - salted challenge-response authentication.
+    #[serde(rename = "SCRAM-SHA-512")]
+    ScramSha512,
+}
+
+impl SaslMechanism {
+    /// Get the Kafka mechanism name as used in the SASL handshake.
+    #[must_use]
+    pub fn mechanism_name(&self) -> &'static str {
+        match self {
+            Self::Plain => "PLAIN",
+            Self::ScramSha256 => "SCRAM-SHA-256",
+            Self::ScramSha512 => "SCRAM-SHA-512",
+        }
+    }
+}
+
+/// SASL authentication configuration.
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct BrokerSaslConfig {
+    /// SASL mechanism to use.
+    #[serde(default)]
+    pub mechanism: SaslMechanism,
+
+    /// Username for authentication.
+    /// Supports environment variable expansion: "${KAFKA_USERNAME}"
+    pub username: String,
+
+    /// Password for authentication.
+    /// Supports environment variable expansion: "${KAFKA_PASSWORD}"
+    pub password: String,
+}
+
+impl BrokerSaslConfig {
+    /// Get the username with environment variables expanded.
+    #[must_use]
+    pub fn username(&self) -> String {
+        expand_env_vars(&self.username)
+    }
+
+    /// Get the password with environment variables expanded.
+    #[must_use]
+    pub fn password(&self) -> String {
+        expand_env_vars(&self.password)
+    }
+}
+
+/// Expand environment variables in a string.
+///
+/// Replaces `${VAR_NAME}` with the value of the environment variable `VAR_NAME`.
+/// If the variable is not set, replaces with an empty string.
+fn expand_env_vars(s: &str) -> String {
+    let re = Regex::new(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}").expect("valid regex");
+    re.replace_all(s, |caps: &regex::Captures| {
+        std::env::var(&caps[1]).unwrap_or_default()
+    })
+    .to_string()
 }
 
 /// Partition remapping configuration.
@@ -314,6 +454,9 @@ mod tests {
                 connection_timeout_ms: 10_000,
                 request_timeout_ms: 30_000,
                 metadata_refresh_interval_secs: 30,
+                security_protocol: SecurityProtocol::default(),
+                tls: None,
+                sasl: None,
             },
             mapping: MappingConfig {
                 virtual_partitions: 100,
@@ -423,5 +566,141 @@ mapping:
         // metrics should have defaults
         assert!(config.metrics.enabled);
         assert_eq!(config.metrics.address, "0.0.0.0:9090");
+        // security_protocol should default to PLAINTEXT
+        assert_eq!(config.kafka.security_protocol, SecurityProtocol::Plaintext);
+    }
+
+    #[test]
+    fn test_security_protocol_parsing() {
+        let yaml = r"
+listen:
+  address: '0.0.0.0:9092'
+kafka:
+  bootstrap_servers:
+    - 'kafka.example.com:9093'
+  security_protocol: SASL_SSL
+  sasl:
+    mechanism: PLAIN
+    username: '${KAFKA_API_KEY}'
+    password: '${KAFKA_API_SECRET}'
+mapping:
+  virtual_partitions: 100
+  physical_partitions: 10
+";
+        let config = ProxyConfig::from_str(yaml).unwrap();
+        assert_eq!(config.kafka.security_protocol, SecurityProtocol::SaslSsl);
+        assert!(config.kafka.security_protocol.requires_tls());
+        assert!(config.kafka.security_protocol.requires_sasl());
+
+        let sasl = config.kafka.sasl.unwrap();
+        assert_eq!(sasl.mechanism, SaslMechanism::Plain);
+    }
+
+    #[test]
+    fn test_sasl_scram_mechanism_parsing() {
+        let yaml = r"
+listen:
+  address: '0.0.0.0:9092'
+kafka:
+  bootstrap_servers:
+    - 'kafka.example.com:9093'
+  security_protocol: SASL_SSL
+  sasl:
+    mechanism: SCRAM-SHA-256
+    username: 'user'
+    password: 'pass'
+mapping:
+  virtual_partitions: 100
+  physical_partitions: 10
+";
+        let config = ProxyConfig::from_str(yaml).unwrap();
+        let sasl = config.kafka.sasl.unwrap();
+        assert_eq!(sasl.mechanism, SaslMechanism::ScramSha256);
+        assert_eq!(sasl.mechanism.mechanism_name(), "SCRAM-SHA-256");
+    }
+
+    #[test]
+    fn test_tls_config_parsing() {
+        let yaml = r"
+listen:
+  address: '0.0.0.0:9092'
+kafka:
+  bootstrap_servers:
+    - 'kafka.example.com:9093'
+  security_protocol: SSL
+  tls:
+    ca_cert_path: '/etc/ssl/ca.crt'
+    cert_path: '/etc/ssl/client.crt'
+    key_path: '/etc/ssl/client.key'
+mapping:
+  virtual_partitions: 100
+  physical_partitions: 10
+";
+        let config = ProxyConfig::from_str(yaml).unwrap();
+        assert_eq!(config.kafka.security_protocol, SecurityProtocol::Ssl);
+        assert!(config.kafka.security_protocol.requires_tls());
+        assert!(!config.kafka.security_protocol.requires_sasl());
+
+        let tls = config.kafka.tls.unwrap();
+        assert_eq!(
+            tls.ca_cert_path,
+            Some(PathBuf::from("/etc/ssl/ca.crt"))
+        );
+        assert_eq!(
+            tls.cert_path,
+            Some(PathBuf::from("/etc/ssl/client.crt"))
+        );
+    }
+
+    #[test]
+    fn test_env_var_expansion() {
+        std::env::set_var("TEST_KAFKA_USER", "my-user");
+        std::env::set_var("TEST_KAFKA_PASS", "my-password");
+
+        let config = BrokerSaslConfig {
+            mechanism: SaslMechanism::Plain,
+            username: "${TEST_KAFKA_USER}".to_string(),
+            password: "${TEST_KAFKA_PASS}".to_string(),
+        };
+
+        assert_eq!(config.username(), "my-user");
+        assert_eq!(config.password(), "my-password");
+
+        std::env::remove_var("TEST_KAFKA_USER");
+        std::env::remove_var("TEST_KAFKA_PASS");
+    }
+
+    #[test]
+    fn test_env_var_expansion_missing_var() {
+        let config = BrokerSaslConfig {
+            mechanism: SaslMechanism::Plain,
+            username: "${NONEXISTENT_VAR}".to_string(),
+            password: "literal".to_string(),
+        };
+
+        assert_eq!(config.username(), "");
+        assert_eq!(config.password(), "literal");
+    }
+
+    #[test]
+    fn test_security_protocol_methods() {
+        assert!(!SecurityProtocol::Plaintext.requires_tls());
+        assert!(!SecurityProtocol::Plaintext.requires_sasl());
+
+        assert!(SecurityProtocol::Ssl.requires_tls());
+        assert!(!SecurityProtocol::Ssl.requires_sasl());
+
+        assert!(!SecurityProtocol::SaslPlaintext.requires_tls());
+        assert!(SecurityProtocol::SaslPlaintext.requires_sasl());
+
+        assert!(SecurityProtocol::SaslSsl.requires_tls());
+        assert!(SecurityProtocol::SaslSsl.requires_sasl());
+    }
+
+    #[test]
+    fn test_sasl_mechanism_names() {
+        assert_eq!(SaslMechanism::Plain.mechanism_name(), "PLAIN");
+        assert_eq!(SaslMechanism::ScramSha256.mechanism_name(), "SCRAM-SHA-256");
+        assert_eq!(SaslMechanism::ScramSha512.mechanism_name(), "SCRAM-SHA-512");
     }
 }

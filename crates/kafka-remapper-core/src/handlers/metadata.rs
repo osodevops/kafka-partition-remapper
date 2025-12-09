@@ -191,7 +191,7 @@ impl ProtocolHandler for MetadataHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{KafkaConfig, ListenConfig, MappingConfig};
+    use crate::config::{KafkaConfig, ListenConfig, MappingConfig, SecurityProtocol};
     use kafka_protocol::messages::metadata_response::{
         MetadataResponseBroker, MetadataResponsePartition, MetadataResponseTopic,
     };
@@ -212,6 +212,9 @@ mod tests {
             connection_timeout_ms: 100,
             request_timeout_ms: 1000,
             metadata_refresh_interval_secs: 0,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         }))
     }
 

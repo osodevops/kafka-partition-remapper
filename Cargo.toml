@@ -48,6 +48,16 @@ http-body-util = "0.1"
 uuid = { version = "1.11", features = ["v4"] }
 dashmap = "6.1"
 
+# TLS/SSL
+tokio-rustls = "0.26"
+rustls = { version = "0.23", default-features = false, features = ["ring", "tls12"] }
+rustls-pemfile = "2.2"
+webpki-roots = "0.26"
+rustls-pki-types = "1.10"
+
+# Regex (for principal mapping and env var expansion)
+regex = "1.11"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

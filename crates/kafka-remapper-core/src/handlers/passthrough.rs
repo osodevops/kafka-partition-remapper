@@ -48,7 +48,7 @@ impl ProtocolHandler for PassthroughHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::KafkaConfig;
+    use crate::config::{KafkaConfig, SecurityProtocol};
 
     fn test_pool() -> Arc<BrokerPool> {
         Arc::new(BrokerPool::new(KafkaConfig {
@@ -56,6 +56,9 @@ mod tests {
             connection_timeout_ms: 100,
             request_timeout_ms: 1000,
             metadata_refresh_interval_secs: 0,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         }))
     }
 

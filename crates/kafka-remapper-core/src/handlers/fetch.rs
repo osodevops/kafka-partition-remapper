@@ -270,7 +270,7 @@ impl FetchMapping {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{KafkaConfig, MappingConfig};
+    use crate::config::{KafkaConfig, MappingConfig, SecurityProtocol};
 
     fn test_remapper() -> Arc<PartitionRemapper> {
         Arc::new(PartitionRemapper::new(&MappingConfig {
@@ -286,6 +286,9 @@ mod tests {
             connection_timeout_ms: 100,
             request_timeout_ms: 1000,
             metadata_refresh_interval_secs: 0,
+            security_protocol: SecurityProtocol::Plaintext,
+            tls: None,
+            sasl: None,
         }))
     }
 

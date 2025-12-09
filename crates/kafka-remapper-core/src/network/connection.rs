@@ -191,7 +191,9 @@ impl ConnectionHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{KafkaConfig, ListenConfig, LoggingConfig, MappingConfig, MetricsConfig};
+    use crate::config::{
+        KafkaConfig, ListenConfig, LoggingConfig, MappingConfig, MetricsConfig, SecurityProtocol,
+    };
 
     fn test_config() -> Arc<ProxyConfig> {
         Arc::new(ProxyConfig {
@@ -201,6 +203,9 @@ mod tests {
                 connection_timeout_ms: 10000,
                 request_timeout_ms: 30000,
                 metadata_refresh_interval_secs: 0,
+                security_protocol: SecurityProtocol::Plaintext,
+                tls: None,
+                sasl: None,
             },
             mapping: MappingConfig {
                 virtual_partitions: 100,

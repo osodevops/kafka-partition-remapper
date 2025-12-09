@@ -15,6 +15,7 @@
 //! - [`broker`] - Backend Kafka broker connection pool
 //! - [`handlers`] - Kafka protocol request handlers
 //! - [`metrics`] - Prometheus metrics collection
+//! - [`tls`] - TLS/SSL support for secure connections
 //!
 //! # Example
 //!
@@ -39,6 +40,7 @@ pub mod handlers;
 pub mod metrics;
 pub mod network;
 pub mod remapper;
+pub mod tls;
 
 /// Test utilities for integration testing.
 ///
@@ -47,5 +49,9 @@ pub mod remapper;
 pub mod testing;
 
 // Re-export commonly used types
-pub use config::ProxyConfig;
-pub use error::{ConfigError, ProxyError, RemapError, Result};
+pub use config::{
+    BrokerSaslConfig, BrokerTlsConfig, ProxyConfig, SaslMechanism, SecurityProtocol,
+};
+pub use error::{AuthError, ConfigError, ProxyError, RemapError, Result, TlsError};
+pub use tls::TlsConnector;
+pub use broker::{BrokerStream, BrokerConnection, BrokerPool};

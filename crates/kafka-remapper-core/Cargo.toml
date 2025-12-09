@@ -38,6 +38,16 @@ prometheus = { workspace = true }
 # Utilities
 dashmap = { workspace = true }
 
+# TLS/SSL
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+webpki-roots = { workspace = true }
+rustls-pki-types = { workspace = true }
+
+# Regex (for env var expansion in config)
+regex = { workspace = true }
+
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.14"
