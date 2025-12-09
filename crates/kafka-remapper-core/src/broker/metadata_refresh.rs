@@ -11,7 +11,7 @@ use bytes::BytesMut;
 use kafka_protocol::messages::{ApiKey, MetadataRequest, MetadataResponse, RequestHeader};
 use kafka_protocol::protocol::{Decodable, Encodable, StrBytes};
 use tokio::sync::watch;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 use super::pool::{BrokerInfo, BrokerPool};
 

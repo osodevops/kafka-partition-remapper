@@ -51,11 +51,11 @@ fn main() -> anyhow::Result<()> {
         0 => config.logging.clone(),
         1 => LoggingConfig {
             level: "debug".to_string(),
-            ..config.logging.clone()
+            ..config.logging
         },
         _ => LoggingConfig {
             level: "trace".to_string(),
-            ..config.logging.clone()
+            ..config.logging
         },
     };
 

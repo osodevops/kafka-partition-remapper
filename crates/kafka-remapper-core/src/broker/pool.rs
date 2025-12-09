@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use dashmap::DashMap;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::config::KafkaConfig;
 use crate::error::{ProxyError, Result};

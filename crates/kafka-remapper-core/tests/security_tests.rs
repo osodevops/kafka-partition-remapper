@@ -1,10 +1,10 @@
 //! Security integration tests for TLS and SASL authentication.
 //!
 //! These tests verify that the proxy can connect to Kafka brokers using
-//! various security protocols (SSL, SASL_PLAINTEXT, SASL_SSL).
+//! various security protocols (SSL, `SASL_PLAINTEXT`, `SASL_SSL`).
 //!
 //! Note: These tests require a properly configured Kafka cluster and are
-//! marked as ignored by default. Run with: cargo test --test security_tests -- --ignored
+//! marked as ignored by default. Run with: cargo test --test `security_tests` -- --ignored
 
 use std::time::Duration;
 
@@ -45,7 +45,7 @@ async fn test_ssl_connection_config() {
     assert_eq!(conn.broker_id(), 1);
 }
 
-/// Test that a SASL_PLAINTEXT connection configuration can be created.
+/// Test that a `SASL_PLAINTEXT` connection configuration can be created.
 #[tokio::test]
 async fn test_sasl_plaintext_connection_config() {
     let sasl_config = BrokerSaslConfig {
@@ -70,7 +70,7 @@ async fn test_sasl_plaintext_connection_config() {
     );
 }
 
-/// Test that a SASL_SSL connection configuration can be created.
+/// Test that a `SASL_SSL` connection configuration can be created.
 #[tokio::test]
 async fn test_sasl_ssl_connection_config() {
     let tls_config = BrokerTlsConfig::default();
@@ -103,7 +103,7 @@ fn test_sasl_plain_credential_format() {
     let username = "kafka-api-key";
     let password = "kafka-api-secret";
 
-    let auth_bytes = format!("\0{}\0{}", username, password);
+    let auth_bytes = format!("\0{username}\0{password}");
 
     let parts: Vec<&str> = auth_bytes.split('\0').collect();
     assert_eq!(parts.len(), 3);
@@ -112,7 +112,7 @@ fn test_sasl_plain_credential_format() {
     assert_eq!(parts[2], password);
 }
 
-/// Test that SecurityProtocol correctly identifies TLS requirements.
+/// Test that `SecurityProtocol` correctly identifies TLS requirements.
 #[test]
 fn test_security_protocol_requires_tls() {
     assert!(!SecurityProtocol::Plaintext.requires_tls());
@@ -121,7 +121,7 @@ fn test_security_protocol_requires_tls() {
     assert!(SecurityProtocol::SaslSsl.requires_tls());
 }
 
-/// Test that SecurityProtocol correctly identifies SASL requirements.
+/// Test that `SecurityProtocol` correctly identifies SASL requirements.
 #[test]
 fn test_security_protocol_requires_sasl() {
     assert!(!SecurityProtocol::Plaintext.requires_sasl());
@@ -134,16 +134,16 @@ fn test_security_protocol_requires_sasl() {
 // Real Kafka Tests (Require configured Kafka cluster)
 // =============================================================================
 
-/// Test connecting to a real Kafka broker with SASL_SSL.
+/// Test connecting to a real Kafka broker with `SASL_SSL`.
 ///
 /// This test requires:
-/// - A Kafka broker running with SASL_SSL enabled
+/// - A Kafka broker running with `SASL_SSL` enabled
 /// - Environment variables:
-///   - KAFKA_BOOTSTRAP_SERVERS: The broker address (e.g., "localhost:9093")
-///   - KAFKA_API_KEY: The SASL username
-///   - KAFKA_API_SECRET: The SASL password
+///   - `KAFKA_BOOTSTRAP_SERVERS`: The broker address (e.g., "localhost:9093")
+///   - `KAFKA_API_KEY`: The SASL username
+///   - `KAFKA_API_SECRET`: The SASL password
 ///
-/// Run with: cargo test --test security_tests test_real_sasl_ssl_connection -- --ignored
+/// Run with: cargo test --test `security_tests` `test_real_sasl_ssl_connection` -- --ignored
 #[tokio::test]
 #[ignore = "Requires configured Kafka cluster with SASL_SSL"]
 async fn test_real_sasl_ssl_connection() {
@@ -185,11 +185,11 @@ async fn test_real_sasl_ssl_connection() {
 /// This test requires:
 /// - A Confluent Cloud cluster
 /// - Environment variables:
-///   - CONFLUENT_BOOTSTRAP_SERVERS: The bootstrap server (e.g., "pkc-xxx.region.gcp.confluent.cloud:9092")
-///   - CONFLUENT_API_KEY: The API key
-///   - CONFLUENT_API_SECRET: The API secret
+///   - `CONFLUENT_BOOTSTRAP_SERVERS`: The bootstrap server (e.g., "pkc-xxx.region.gcp.confluent.cloud:9092")
+///   - `CONFLUENT_API_KEY`: The API key
+///   - `CONFLUENT_API_SECRET`: The API secret
 ///
-/// Run with: cargo test --test security_tests test_confluent_cloud_connection -- --ignored
+/// Run with: cargo test --test `security_tests` `test_confluent_cloud_connection` -- --ignored
 #[tokio::test]
 #[ignore = "Requires Confluent Cloud credentials"]
 async fn test_confluent_cloud_connection() {

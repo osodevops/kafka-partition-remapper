@@ -31,13 +31,11 @@ async fn test_produce_multiple_partitions() {
         let mapping = harness.remapper.virtual_to_physical(virtual_part).unwrap();
         assert_eq!(
             mapping.physical_partition, expected_physical,
-            "Virtual {} should map to physical {}",
-            virtual_part, expected_physical
+            "Virtual {virtual_part} should map to physical {expected_physical}"
         );
         assert_eq!(
             mapping.virtual_group, expected_group,
-            "Virtual {} should be in group {}",
-            virtual_part, expected_group
+            "Virtual {virtual_part} should be in group {expected_group}"
         );
     }
 }
@@ -112,7 +110,7 @@ async fn test_produce_all_partitions_mappable() {
     // Every virtual partition should be mappable
     for v in 0i32..1000 {
         let result = harness.remapper.virtual_to_physical(v);
-        assert!(result.is_ok(), "Virtual partition {} should be mappable", v);
+        assert!(result.is_ok(), "Virtual partition {v} should be mappable");
     }
 }
 

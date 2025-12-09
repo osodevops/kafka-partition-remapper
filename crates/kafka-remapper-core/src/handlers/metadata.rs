@@ -13,7 +13,7 @@ use async_trait::async_trait;
 use bytes::BytesMut;
 use kafka_protocol::messages::MetadataResponse;
 use kafka_protocol::protocol::{Decodable, Encodable, StrBytes};
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::broker::BrokerPool;
 use crate::config::ListenConfig;

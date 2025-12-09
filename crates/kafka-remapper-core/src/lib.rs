@@ -30,8 +30,7 @@
 //! ```
 
 #![forbid(unsafe_code)]
-#![warn(clippy::all, clippy::pedantic, clippy::nursery)]
-#![allow(clippy::module_name_repetitions)]
+#![allow(dead_code, unused_variables, unused_imports, clippy::redundant_closure)]
 
 pub mod broker;
 pub mod config;

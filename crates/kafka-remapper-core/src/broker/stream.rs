@@ -80,8 +80,6 @@ impl AsyncWrite for BrokerStream {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_broker_stream_is_tls() {
         // We can't easily construct a TlsStream without a real TLS handshake,

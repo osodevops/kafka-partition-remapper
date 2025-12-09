@@ -1,4 +1,4 @@
-//! Integration tests for OffsetCommit and OffsetFetch handling.
+//! Integration tests for `OffsetCommit` and `OffsetFetch` handling.
 //!
 //! Tests that offset commit/fetch correctly translate between virtual
 //! and physical partition indices and offsets.
@@ -77,13 +77,11 @@ async fn test_virtual_offset_commit_roundtrip() {
 
         assert_eq!(
             back.virtual_partition, v_part,
-            "Partition roundtrip failed for ({}, {})",
-            v_part, v_offset
+            "Partition roundtrip failed for ({v_part}, {v_offset})"
         );
         assert_eq!(
             back.virtual_offset, v_offset,
-            "Offset roundtrip failed for ({}, {})",
-            v_part, v_offset
+            "Offset roundtrip failed for ({v_part}, {v_offset})"
         );
     }
 }
@@ -109,16 +107,14 @@ async fn test_offset_commit_multiple_groups() {
 
         assert_eq!(
             physical.physical_partition, physical_partition,
-            "Virtual partition {} should map to physical 0",
-            v_part
+            "Virtual partition {v_part} should map to physical 0"
         );
 
         // Each group has its own offset range
-        let expected_offset = (group as i64) * offset_range + v_offset;
+        let expected_offset = i64::from(group) * offset_range + v_offset;
         assert_eq!(
             physical.physical_offset, expected_offset,
-            "Offset for group {} incorrect",
-            group
+            "Offset for group {group} incorrect"
         );
     }
 }
@@ -139,9 +135,7 @@ async fn test_offset_fetch_no_overlap_between_groups() {
     // Should not overlap
     assert!(
         range_0.1 <= range_10.0,
-        "Offset ranges should not overlap: {:?} vs {:?}",
-        range_0,
-        range_10
+        "Offset ranges should not overlap: {range_0:?} vs {range_10:?}"
     );
 
     // Specific boundary check

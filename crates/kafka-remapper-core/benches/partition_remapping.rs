@@ -25,7 +25,7 @@ fn bench_virtual_to_physical(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(1));
         group.bench_with_input(
-            BenchmarkId::new("mapping", format!("{}:{}", virt_count, phys_count)),
+            BenchmarkId::new("mapping", format!("{virt_count}:{phys_count}")),
             &remapper,
             |b, r| {
                 b.iter(|| {
@@ -49,10 +49,7 @@ fn bench_offset_translation(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(1));
         group.bench_with_input(
-            BenchmarkId::new(
-                "virtual_to_physical",
-                format!("{}:{}", virt_count, phys_count),
-            ),
+            BenchmarkId::new("virtual_to_physical", format!("{virt_count}:{phys_count}")),
             &remapper,
             |b, r: &PartitionRemapper| {
                 b.iter(|| {
@@ -62,10 +59,7 @@ fn bench_offset_translation(c: &mut Criterion) {
         );
 
         group.bench_with_input(
-            BenchmarkId::new(
-                "physical_to_virtual",
-                format!("{}:{}", virt_count, phys_count),
-            ),
+            BenchmarkId::new("physical_to_virtual", format!("{virt_count}:{phys_count}")),
             &remapper,
             |b, r: &PartitionRemapper| {
                 // First get a valid physical offset
@@ -156,7 +150,7 @@ fn bench_virtual_partitions_for_physical(c: &mut Criterion) {
         let remapper = create_remapper(virt_count, phys_count);
 
         group.bench_with_input(
-            BenchmarkId::new("lookup", format!("{}:{}", virt_count, phys_count)),
+            BenchmarkId::new("lookup", format!("{virt_count}:{phys_count}")),
             &remapper,
             |b, r: &PartitionRemapper| {
                 b.iter(|| {

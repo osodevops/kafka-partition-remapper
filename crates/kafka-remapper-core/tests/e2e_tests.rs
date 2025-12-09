@@ -1,14 +1,14 @@
 //! End-to-end tests for the Kafka partition remapping proxy.
 //!
 //! This module contains two types of tests:
-//! 1. Mock-based scenario tests using ProxyTestHarness
+//! 1. Mock-based scenario tests using `ProxyTestHarness`
 //! 2. Real Kafka tests using testcontainers-rs
 
 use std::collections::HashMap;
 use std::time::Duration;
 
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
-use rdkafka::client::{ClientContext, DefaultClientContext};
+use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer};
 use rdkafka::producer::{BaseProducer, BaseRecord, Producer};
@@ -81,7 +81,9 @@ async fn test_key_ordering_preserved() {
     ];
 
     for key in &keys {
-        let hash = key.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+        let hash = key
+            .bytes()
+            .fold(0u32, |acc, b| acc.wrapping_add(u32::from(b)));
         let virtual_partition = (hash % 100) as i32;
         let mapping = harness
             .remapper
@@ -90,7 +92,9 @@ async fn test_key_ordering_preserved() {
 
         // Same key should always map to same partitions
         for _ in 0..100 {
-            let hash2 = key.bytes().fold(0u32, |acc, b| acc.wrapping_add(b as u32));
+            let hash2 = key
+                .bytes()
+                .fold(0u32, |acc, b| acc.wrapping_add(u32::from(b)));
             let vp2 = (hash2 % 100) as i32;
             assert_eq!(vp2, virtual_partition, "Key routing should be consistent");
 
@@ -249,8 +253,7 @@ async fn test_partition_distribution() {
         assert_eq!(
             virtuals.len(),
             10,
-            "Physical partition {} should have 10 virtual partitions",
-            phys
+            "Physical partition {phys} should have 10 virtual partitions"
         );
     }
 }
@@ -307,7 +310,7 @@ impl KafkaTestEnvironment {
         let container = Kafka::default().start().await.unwrap();
         let port = container.get_host_port_ipv4(KAFKA_PORT).await.unwrap();
         // Use 127.0.0.1 explicitly to avoid IPv6 resolution issues
-        let bootstrap_servers = format!("127.0.0.1:{}", port);
+        let bootstrap_servers = format!("127.0.0.1:{port}");
 
         let remapper = PartitionRemapper::new(&MappingConfig {
             virtual_partitions: 100,
@@ -335,9 +338,10 @@ impl KafkaTestEnvironment {
             }
 
             attempts += 1;
-            if attempts >= 30 {
-                panic!("Kafka did not become ready within 30 seconds");
-            }
+            assert!(
+                attempts < 30,
+                "Kafka did not become ready within 30 seconds"
+            );
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
 
@@ -395,7 +399,7 @@ impl KafkaTestEnvironment {
 /// Test that we can produce and consume messages through Kafka.
 ///
 /// Note: This test requires Docker and may be flaky due to Kafka startup timing.
-/// Run with: cargo test --test e2e_tests test_kafka -- --ignored
+/// Run with: cargo test --test `e2e_tests` `test_kafka` -- --ignored
 #[tokio::test]
 #[ignore = "Requires Docker and stable Kafka container networking"]
 async fn test_kafka_produce_consume_basic() {
@@ -441,11 +445,10 @@ async fn test_virtual_partition_mapping_with_kafka() {
 
         assert!(
             physical_partition < 10,
-            "Physical partition {} should be < 10",
-            physical_partition
+            "Physical partition {physical_partition} should be < 10"
         );
 
-        let message = format!("message for virtual partition {}", virtual_partition);
+        let message = format!("message for virtual partition {virtual_partition}");
         producer
             .send(
                 BaseRecord::to("test-mapping")
@@ -487,7 +490,7 @@ async fn test_offset_translation_with_kafka() {
         producer
             .send(
                 BaseRecord::<(), _>::to("test-offsets")
-                    .payload(format!("message {}", i).as_bytes())
+                    .payload(format!("message {i}").as_bytes())
                     .partition(0),
             )
             .expect("Failed to send message");
@@ -527,7 +530,7 @@ async fn test_multi_consumer_virtual_partitions() {
             producer
                 .send(
                     BaseRecord::<(), _>::to("test-multi-consumer")
-                        .payload(format!("p{}m{}", phys_partition, i).as_bytes())
+                        .payload(format!("p{phys_partition}m{i}").as_bytes())
                         .partition(phys_partition),
                 )
                 .expect("Failed to send message");
@@ -568,7 +571,7 @@ async fn test_key_routing_consistency() {
         producer
             .send(
                 BaseRecord::to("test-key-routing")
-                    .payload(format!("message {}", i).as_bytes())
+                    .payload(format!("message {i}").as_bytes())
                     .key(test_key),
             )
             .expect("Failed to send message");
@@ -614,11 +617,11 @@ async fn test_high_throughput_kafka() {
     let message_count = 1000;
 
     for i in 0..message_count {
-        let partition = (i % 10) as i32;
+        let partition = i % 10;
         producer
             .send(
                 BaseRecord::<(), _>::to("test-throughput")
-                    .payload(format!("msg-{}", i).as_bytes())
+                    .payload(format!("msg-{i}").as_bytes())
                     .partition(partition),
             )
             .expect("Failed to send message");
@@ -644,7 +647,6 @@ async fn test_high_throughput_kafka() {
 
     assert_eq!(
         received, message_count,
-        "Should have received all {} messages, got {}",
-        message_count, received
+        "Should have received all {message_count} messages, got {received}"
     );
 }

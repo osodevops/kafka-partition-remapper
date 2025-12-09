@@ -5,12 +5,11 @@
 
 use std::sync::Arc;
 
-use kafka_remapper_core::config::{KafkaConfig, ListenConfig, MappingConfig};
 use kafka_remapper_core::handlers::MetadataHandler;
-use kafka_remapper_core::remapper::PartitionRemapper;
-use kafka_remapper_core::testing::{api_keys, MockBroker, ProxyTestHarness, TestHarnessBuilder};
+use kafka_remapper_core::testing::{api_keys, ProxyTestHarness, TestHarnessBuilder};
 
 /// Helper to create a metadata handler for tests.
+#[allow(dead_code)]
 fn create_metadata_handler(harness: &ProxyTestHarness) -> MetadataHandler {
     MetadataHandler::new(
         harness.remapper.clone(),
@@ -46,8 +45,7 @@ async fn test_metadata_all_virtual_partitions_listed() {
         let result = harness.remapper.virtual_to_physical(v_part);
         assert!(
             result.is_ok(),
-            "Virtual partition {} should be mappable",
-            v_part
+            "Virtual partition {v_part} should be mappable"
         );
 
         let mapping = result.unwrap();
@@ -76,15 +74,14 @@ async fn test_metadata_virtual_to_physical_distribution() {
 
         assert_eq!(
             virtual_count, 10,
-            "Physical partition {} should host exactly 10 virtual partitions",
-            phys
+            "Physical partition {phys} should host exactly 10 virtual partitions"
         );
     }
 }
 
 #[tokio::test]
 async fn test_metadata_broker_recording() {
-    let mut harness = ProxyTestHarness::new().await;
+    let harness = ProxyTestHarness::new().await;
 
     // Register a metadata response handler
     use bytes::{BufMut, BytesMut};

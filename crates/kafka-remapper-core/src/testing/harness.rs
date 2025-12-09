@@ -8,7 +8,6 @@
 use std::sync::Arc;
 
 use bytes::Bytes;
-use tokio::sync::RwLock;
 
 use crate::broker::BrokerPool;
 use crate::config::{KafkaConfig, ListenConfig, MappingConfig, ProxyConfig, SecurityProtocol};

@@ -133,7 +133,7 @@ mod tests {
         KafkaConfig, ListenConfig, LoggingConfig, MappingConfig, MetricsConfig, SecurityProtocol,
     };
     use std::time::Duration;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpStream;
     use tokio::time::timeout;
 

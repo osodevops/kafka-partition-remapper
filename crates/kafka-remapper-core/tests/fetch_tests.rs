@@ -98,9 +98,7 @@ async fn test_fetch_same_physical_different_virtual() {
 
     assert!(
         range_0.1 <= range_10.0,
-        "Offset ranges should not overlap: {:?} vs {:?}",
-        range_0,
-        range_10
+        "Offset ranges should not overlap: {range_0:?} vs {range_10:?}"
     );
 }
 

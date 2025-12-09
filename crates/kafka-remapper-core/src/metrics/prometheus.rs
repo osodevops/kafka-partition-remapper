@@ -4,10 +4,8 @@
 //! and performance.
 
 use prometheus::{
-    Counter, CounterVec, Histogram, HistogramOpts, HistogramVec, IntGauge, IntGaugeVec, Opts,
-    Registry, TextEncoder,
+    Counter, CounterVec, HistogramOpts, HistogramVec, IntGauge, Opts, Registry, TextEncoder,
 };
-use std::sync::Arc;
 
 /// Proxy metrics collection.
 ///
