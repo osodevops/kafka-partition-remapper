@@ -1,7 +1,7 @@
 <p align="center">
-  <h1 align="center">kafka-partition-remapper</h1>
+  <h1 align="center">Kafka Partition Remapping Proxy</h1>
   <p align="center">
-    Reduce managed Kafka costs by remapping virtual partitions to fewer physical partitions
+    A high-performance Kafka proxy that virtualizes partition counts, enabling cost reduction and seamless partition management
   </p>
 </p>
 
@@ -19,15 +19,17 @@
 
 ---
 
-**kafka-partition-remapper** is a high-performance TCP proxy written in Rust that sits between Kafka clients and managed Kafka clusters (like Confluent Cloud). It enables applications to use many virtual partitions while the actual Kafka cluster uses fewer physical partitions, reducing per-partition costs on managed services.
+A lightweight, developer-friendly proxy for Apache Kafka that transparently remaps partitions between clients and brokers. Designed to make partition migrations, traffic rebalancing, and topology changes simple, safe, and zero-touch for your producers and consumers.
 
-## The Problem
+## Why Kafka Partition Remapping Proxy?
 
-Managed Kafka services like Confluent Cloud charge per partition. High-cardinality use cases (multi-tenant SaaS, IoT, event sourcing) often need thousands of logical partitions for proper data isolation, but this becomes prohibitively expensive.
+Running Kafka at scale often means dealing with partition constraints:
 
-## The Solution
+- **Cost pressure**: Managed Kafka services like Confluent Cloud charge per partition. High-cardinality use cases (multi-tenant SaaS, IoT, event sourcing) need thousands of logical partitions but this becomes prohibitively expensive.
+- **Migration complexity**: Changing partition layouts requires complex coordination, custom tooling, or application changes.
+- **Operational overhead**: Rebalancing hot partitions or evolving topology disrupts clients.
 
-This proxy transparently remaps virtual partitions to physical partitions:
+**Kafka Partition Remapping Proxy solves this** by sitting between your clients and your Kafka cluster, handling all partition remapping logic transparently. Producers and consumers connect to the proxy as if it were Kafka, while the proxy takes care of routing and remapping behind the scenes.
 
 ```
 Client sees:     1000 virtual partitions  ($$$$$)
@@ -35,16 +37,42 @@ Kafka has:       100 physical partitions  ($)
 Compression:     10:1 cost reduction
 ```
 
-Clients connect to the proxy instead of Kafka directly. The proxy intercepts Kafka protocol messages and translates partition IDs and offsets transparently.
+## Key Benefits
 
-## Features
+### Zero Code Changes
+Keep your client config and application code untouched. Point them at the proxy and let it handle partition remapping and routing logic.
 
-- **Transparent remapping** — No client code changes required
-- **High performance** — Written in async Rust with Tokio
-- **Low latency** — Target ≤1-3ms additional p99 latency
-- **Stateless** — Horizontally scalable, no coordination needed
-- **Observable** — Prometheus metrics built-in
-- **Confluent Cloud compatible** — Tested with Kafka 3.6+
+### Simple, Declarative Configuration
+Define your partition remapping rules with a clean YAML configuration. No scripting or operational gymnastics required.
+
+### Safe Migrations and Rebalancing
+Move partitions, rebalance load, or change topic layouts with predictable behavior and minimal risk of client disruptions.
+
+### Transparent to Clients
+The proxy maintains Kafka semantics, so your existing tooling, metrics, and consumers continue to work as expected.
+
+### High Performance
+Written in async Rust with Tokio for minimal latency overhead (≤1-3ms p99) and high throughput.
+
+### Optimized for Operations
+Built to be easy to deploy, observe, and operate in modern Kubernetes and cloud environments. Prometheus metrics built-in.
+
+## Use Cases
+
+### Reduce Managed Kafka Costs
+Use 1000 virtual partitions while paying for only 100 physical partitions. Achieve 10:1 cost reduction on partition-based pricing.
+
+### Partition Migration Without Downtime
+Move partitions between brokers or clusters without coordinating rolling client restarts or application releases.
+
+### Load Rebalancing for Hot Partitions
+Smooth out hot spots by transparently remapping partitions, while clients continue to write/read using the same partition IDs.
+
+### Progressive Topology Changes
+Evolve your Kafka topology over time with a proxy layer that decouples client expectations from physical partition layouts.
+
+### Multi-Tenant Isolation
+Give each tenant their own virtual partition space while efficiently sharing physical resources.
 
 ## How It Works
 
@@ -54,6 +82,11 @@ Clients connect to the proxy instead of Kafka directly. The proxy intercepts Kaf
 │ (v.part 42) │     │  42 → phys.part 2   │     │  (10 parts) │
 └─────────────┘     └─────────────────────┘     └─────────────┘
 ```
+
+1. **Clients connect to the proxy** instead of directly to the Kafka cluster
+2. **The proxy intercepts metadata and data traffic**
+3. **Based on configuration**, it remaps logical partitions to physical partitions
+4. **To the client**, everything still looks like a regular Kafka cluster
 
 **Partition Mapping:**
 ```
@@ -65,25 +98,7 @@ physical_partition = virtual_partition % physical_partitions
 physical_offset = (virtual_group * offset_range) + virtual_offset
 ```
 
-Each virtual partition group gets its own offset space (default: 2^40 offsets), ensuring isolation.
-
-## Installation
-
-### From Source
-
-```bash
-git clone https://github.com/osodevops/kafka-partition-remapper.git
-cd kafka-partition-remapper
-cargo build --release
-./target/release/kafka-partition-proxy --help
-```
-
-### Docker
-
-```bash
-docker pull osodevops/kafka-partition-remapper
-docker run --rm -v /path/to/config:/config osodevops/kafka-partition-remapper --config /config/config.yaml
-```
+Each virtual partition group gets its own offset space (default: 2^40 offsets), ensuring complete isolation.
 
 ## Quick Start
 
@@ -109,7 +124,14 @@ metrics:
 ### 2. Start the Proxy
 
 ```bash
-kafka-partition-proxy --config config.yaml
+# Using Docker
+docker run --rm \
+  -v /path/to/config.yaml:/config/config.yaml \
+  osodevops/kafka-partition-remapper --config /config/config.yaml
+
+# Or from source
+cargo build --release
+./target/release/kafka-partition-proxy --config config.yaml
 ```
 
 ### 3. Connect Clients
@@ -150,6 +172,16 @@ See the [Quickstart Guide](docs/quickstart.md) for detailed instructions.
 | `logging` | `level` | Log level | `info` |
 | `logging` | `json` | JSON log format | `false` |
 
+## Features
+
+- **Transparent Kafka proxy** for producers and consumers
+- **Partition-level remapping** with declarative configuration
+- **Offset translation** maintaining consumer group semantics
+- **High performance** async Rust with Tokio
+- **Observable** with Prometheus metrics
+- **Containerized** for Kubernetes deployments
+- **Minimal dependencies** and small operational footprint
+
 ## Metrics
 
 | Metric | Type | Description |
@@ -169,6 +201,8 @@ See the [Quickstart Guide](docs/quickstart.md) for detailed instructions.
 | Metadata | Full | Virtualizes partition count |
 | Produce | Full | Remaps partitions and offsets |
 | Fetch | Full | Remaps partitions and filters by offset range |
+| OffsetCommit | Full | Translates virtual offsets to physical |
+| OffsetFetch | Full | Translates physical offsets back to virtual |
 | Others | Passthrough | Forwarded without modification |
 
 ## Performance
@@ -178,6 +212,8 @@ See the [Quickstart Guide](docs/quickstart.md) for detailed instructions.
 | Additional latency | ≤1-3ms p99 |
 | Throughput | ≥80-90% of direct Kafka |
 | Memory usage | <500MB typical |
+
+Benchmarks available via `cargo bench`.
 
 ## Limitations (MVP)
 
@@ -199,8 +235,10 @@ kafka-partition-remapper/
 │   │   │   ├── network/         # TCP listener, codec
 │   │   │   ├── broker/          # Broker connections
 │   │   │   ├── handlers/        # Protocol handlers
-│   │   │   └── metrics/         # Prometheus metrics
-│   │   └── tests/
+│   │   │   ├── metrics/         # Prometheus metrics
+│   │   │   └── testing/         # Test harness & mock broker
+│   │   ├── tests/               # Integration tests
+│   │   └── benches/             # Performance benchmarks
 │   └── kafka-remapper-cli/      # CLI binary
 ├── config/                      # Example configs
 ├── docker/                      # Docker setup
@@ -213,8 +251,11 @@ kafka-partition-remapper/
 # Build
 cargo build --release
 
-# Test
-cargo test
+# Test (131 tests)
+cargo test --features testing
+
+# Run benchmarks
+cargo bench
 
 # Run with debug logging
 RUST_LOG=debug cargo run -p kafka-remapper-cli -- --config config.yaml
@@ -232,7 +273,13 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ## License
 
-kafka-partition-remapper is licensed under the [MIT License](LICENSE).
+Kafka Partition Remapping Proxy is licensed under the [MIT License](LICENSE).
+
+---
+
+## Summary
+
+Kafka Partition Remapping Proxy is an easy-to-deploy Kafka proxy that simplifies partition management, reduces costs on managed Kafka services, and enables seamless topology changes without requiring changes to your client applications. By centralizing partition remapping logic in a lightweight Rust proxy, it helps Kafka platform teams deliver safer, faster infrastructure changes while keeping the developer experience simple.
 
 ---
 
