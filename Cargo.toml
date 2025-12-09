@@ -8,6 +8,7 @@ edition = "2021"
 rust-version = "1.75"
 license = "Apache-2.0"
 repository = "https://github.com/osodevops/kafka-partition-remapper"
+homepage = "https://github.com/osodevops/kafka-partition-remapper"
 description = "Kafka partition remapping proxy for cost optimization"
 
 [workspace.dependencies]

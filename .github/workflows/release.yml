@@ -211,49 +211,14 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
-
-  # Publish kafka-remapper-core to crates.io
-  publish-crates-io:
-    needs:
-      - plan
-      - build-local-artifacts
-      - build-global-artifacts
-    # Only run on actual releases (tags), not PRs
-    if: ${{ always() && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: ${{ runner.os }}-cargo-publish-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Verify package is publishable
-        run: cargo publish -p kafka-remapper-core --dry-run
-
-      - name: Publish kafka-remapper-core to crates.io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-        run: cargo publish -p kafka-remapper-core
-
   # Determines if we should publish/announce
   host:
     needs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
-      - publish-crates-io
-    # Only run if we're "publishing", and only if plan, local, global, and crates.io publish didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.publish-crates-io.result == 'skipped' || needs.publish-crates-io.result == 'success') }}
+    # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
@@ -303,8 +268,6 @@ jobs:
           rm -f artifacts/*-dist-manifest.json
       - name: Create GitHub Release
         env:
-          # Use PAT instead of GITHUB_TOKEN to avoid org-level restrictions
-          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           PRERELEASE_FLAG: "${{ fromJson(steps.host.outputs.manifest).announcement_is_prerelease && '--prerelease' || '' }}"
           ANNOUNCEMENT_TITLE: "${{ fromJson(steps.host.outputs.manifest).announcement_title }}"
           ANNOUNCEMENT_BODY: "${{ fromJson(steps.host.outputs.manifest).announcement_github_body }}"
@@ -361,34 +324,15 @@ jobs:
           done
           git push
 
-  publish-scoop-manifest:
-    needs:
-      - plan
-      - host
-    runs-on: "ubuntu-22.04"
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      PLAN: ${{ needs.plan.outputs.val }}
-    if: ${{ !fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases }}
-    steps:
-      - name: Trigger Scoop bucket update
-        uses: peter-evans/repository-dispatch@v3
-        with:
-          token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
-          repository: osodevops/scoop-bucket
-          event-type: update-manifest
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "tag": "${{ needs.plan.outputs.tag }}"}'
-
   announce:
     needs:
       - plan
       - host
       - publish-homebrew-formula
-      - publish-scoop-manifest
     # use "always() && ..." to allow us to wait for all publish jobs while
     # still allowing individual publish jobs to skip themselves (for prereleases).
     # "host" however must run to completion, no skipping allowed!
-    if: ${{ always() && needs.host.result == 'success' && (needs.publish-homebrew-formula.result == 'skipped' || needs.publish-homebrew-formula.result == 'success') && (needs.publish-scoop-manifest.result == 'skipped' || needs.publish-scoop-manifest.result == 'success') }}
+    if: ${{ always() && needs.host.result == 'success' && (needs.publish-homebrew-formula.result == 'skipped' || needs.publish-homebrew-formula.result == 'success') }}
     runs-on: "ubuntu-22.04"
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
