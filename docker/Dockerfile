@@ -15,18 +15,20 @@ COPY crates/kafka-remapper-core/Cargo.toml ./crates/kafka-remapper-core/
 COPY crates/kafka-remapper-cli/Cargo.toml ./crates/kafka-remapper-cli/
 
 # Create dummy source files to build dependencies
-RUN mkdir -p crates/kafka-remapper-core/src crates/kafka-remapper-cli/src && \
+RUN mkdir -p crates/kafka-remapper-core/src crates/kafka-remapper-cli/src crates/kafka-remapper-core/benches && \
     echo "pub fn dummy() {}" > crates/kafka-remapper-core/src/lib.rs && \
-    echo "fn main() {}" > crates/kafka-remapper-cli/src/main.rs
+    echo "fn main() {}" > crates/kafka-remapper-cli/src/main.rs && \
+    echo "fn main() {}" > crates/kafka-remapper-core/benches/partition_remapping.rs
 
 # Build dependencies
 RUN cargo build --release --package kafka-remapper-cli
 
 # Remove dummy source files
-RUN rm -rf crates/kafka-remapper-core/src crates/kafka-remapper-cli/src
+RUN rm -rf crates/kafka-remapper-core/src crates/kafka-remapper-cli/src crates/kafka-remapper-core/benches
 
 # Copy actual source code
 COPY crates/kafka-remapper-core/src ./crates/kafka-remapper-core/src
+COPY crates/kafka-remapper-core/benches ./crates/kafka-remapper-core/benches
 COPY crates/kafka-remapper-cli/src ./crates/kafka-remapper-cli/src
 
 # Touch source files to invalidate cache
