@@ -7,11 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.5] - 2025-12-19
+
 ### Added
-- Authentication and principal extraction support
-- Example configurations for various deployment scenarios
+- CHANGELOG.md following Keep a Changelog format
+- CLAUDE.md AI/contributor guidance document
+- Core library README for crates.io publishing
+- crates.io publishing in release workflow
+- Scoop publishing for Windows package manager
+- Comprehensive Installation section in README (Homebrew, Shell, PowerShell, Scoop, Docker)
+- "Try It Yourself" section with example configurations
+- Comparison table with Kroxylicious, Conduktor Gateway, and kafka-proxy
+- Documentation table linking to all guides
+
+### Changed
+- Updated comparison table to accurately reflect Conduktor's Concentrated Topics feature
+- License badge updated to Apache-2.0
 
 ### Fixed
+- E2E test target name in workflow (e2e → e2e_tests)
+- Benchmark command in workflow (added --bench partition_remapping flag)
 - CI test failures for formatting and clippy lints
 
 ## [0.5.4] - 2025-12-10
@@ -68,7 +83,8 @@ Initial public release.
 - Docker support with multi-stage builds
 - Comprehensive documentation
 
-[Unreleased]: https://github.com/osodevops/kafka-partition-remapper/compare/v0.5.4...HEAD
+[Unreleased]: https://github.com/osodevops/kafka-partition-remapper/compare/v0.5.5...HEAD
+[0.5.5]: https://github.com/osodevops/kafka-partition-remapper/compare/v0.5.4...v0.5.5
 [0.5.4]: https://github.com/osodevops/kafka-partition-remapper/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/osodevops/kafka-partition-remapper/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/osodevops/kafka-partition-remapper/compare/v0.5.1...v0.5.2
