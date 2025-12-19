@@ -13,6 +13,7 @@ fn create_remapper(virtual_partitions: u32, physical_partitions: u32) -> Partiti
         virtual_partitions,
         physical_partitions,
         offset_range: 1 << 40,
+        topics: Default::default(),
     })
 }
 

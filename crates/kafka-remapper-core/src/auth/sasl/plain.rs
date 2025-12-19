@@ -56,7 +56,10 @@ impl SaslAuthenticator for PlainAuthenticator {
                 (username, password)
             }
             _ => {
-                warn!("Invalid PLAIN message format: expected 3 parts, got {}", parts.len());
+                warn!(
+                    "Invalid PLAIN message format: expected 3 parts, got {}",
+                    parts.len()
+                );
                 return SaslStepResult::Failed(AuthError::InvalidCredentials);
             }
         };
@@ -130,7 +133,10 @@ mod tests {
         let message = b"\0alice\0wrongpassword";
         let result = auth.authenticate_step(message, &mut session);
 
-        assert!(matches!(result, SaslStepResult::Failed(AuthError::InvalidCredentials)));
+        assert!(matches!(
+            result,
+            SaslStepResult::Failed(AuthError::InvalidCredentials)
+        ));
         assert!(session.authenticated_user.is_none());
     }
 
@@ -142,7 +148,10 @@ mod tests {
         let message = b"\0unknown\0password";
         let result = auth.authenticate_step(message, &mut session);
 
-        assert!(matches!(result, SaslStepResult::Failed(AuthError::InvalidCredentials)));
+        assert!(matches!(
+            result,
+            SaslStepResult::Failed(AuthError::InvalidCredentials)
+        ));
     }
 
     #[test]
@@ -153,7 +162,10 @@ mod tests {
         let message = b"username";
         let result = auth.authenticate_step(message, &mut session);
 
-        assert!(matches!(result, SaslStepResult::Failed(AuthError::InvalidCredentials)));
+        assert!(matches!(
+            result,
+            SaslStepResult::Failed(AuthError::InvalidCredentials)
+        ));
     }
 
     #[test]

@@ -49,10 +49,8 @@ impl InMemoryCredentialStore {
 
     /// Add credentials for a user.
     pub fn add_user(&mut self, username: String, password: String) {
-        self.credentials.insert(
-            username.clone(),
-            StoredCredentials { username, password },
-        );
+        self.credentials
+            .insert(username.clone(), StoredCredentials { username, password });
     }
 
     /// Create from a list of user credentials.
@@ -136,16 +134,12 @@ impl CredentialStore for FileCredentialStore {
 /// # Errors
 ///
 /// Returns an error if the credential store cannot be created.
-pub fn create_credential_store(
-    config: &CredentialConfig,
-) -> Result<Arc<dyn CredentialStore>> {
+pub fn create_credential_store(config: &CredentialConfig) -> Result<Arc<dyn CredentialStore>> {
     match config {
         CredentialConfig::Inline { users } => {
             Ok(Arc::new(InMemoryCredentialStore::from_users(users.clone())))
         }
-        CredentialConfig::File { file } => {
-            Ok(Arc::new(FileCredentialStore::load(file)?))
-        }
+        CredentialConfig::File { file } => Ok(Arc::new(FileCredentialStore::load(file)?)),
     }
 }
 
@@ -191,7 +185,7 @@ mod tests {
         writeln!(file, "# Comment line").unwrap();
         writeln!(file, "user1:password1").unwrap();
         writeln!(file, "user2:password2").unwrap();
-        writeln!(file, "").unwrap(); // Empty line
+        writeln!(file).unwrap(); // Empty line
         writeln!(file, "user3:password:with:colons").unwrap();
         file.flush().unwrap();
 

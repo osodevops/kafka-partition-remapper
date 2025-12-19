@@ -98,7 +98,11 @@ impl MetadataHandler {
     /// virtual partitions that map to it.
     fn virtualize_response(&self, mut response: MetadataResponse) -> MetadataResponse {
         for topic in &mut response.topics {
-            let topic_name = topic.name.as_ref().map(|n| n.to_string()).unwrap_or_default();
+            let topic_name = topic
+                .name
+                .as_ref()
+                .map(|n| n.to_string())
+                .unwrap_or_default();
             let remapper = self.registry.get_remapper(&topic_name);
             let original_partitions = std::mem::take(&mut topic.partitions);
             let mut virtual_partitions = Vec::new();

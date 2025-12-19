@@ -238,9 +238,8 @@ impl SslPrincipalMapper {
             None
         };
 
-        let pattern = Regex::new(pattern_str).map_err(|e| {
-            MapperError::InvalidPattern(format!("{}: {}", pattern_str, e))
-        })?;
+        let pattern = Regex::new(pattern_str)
+            .map_err(|e| MapperError::InvalidPattern(format!("{}: {}", pattern_str, e)))?;
 
         Ok(MappingRule::Pattern {
             pattern,
@@ -395,8 +394,7 @@ mod tests {
 
     #[test]
     fn test_fallback_to_default() {
-        let mapper =
-            SslPrincipalMapper::from_rules("RULE:^OU=([^,]+).*$/$1/,DEFAULT").unwrap();
+        let mapper = SslPrincipalMapper::from_rules("RULE:^OU=([^,]+).*$/$1/,DEFAULT").unwrap();
         // DN doesn't start with OU, so pattern won't match
         let dn = "CN=client1,O=Company";
         // Falls through to DEFAULT rule
@@ -506,10 +504,8 @@ mod tests {
     #[test]
     fn test_real_world_kafka_rules() {
         // Common Kafka rule: extract CN and lowercase
-        let mapper = SslPrincipalMapper::from_rules(
-            "RULE:^CN=([a-zA-Z0-9._-]+),.*$/$1/L,DEFAULT",
-        )
-        .unwrap();
+        let mapper =
+            SslPrincipalMapper::from_rules("RULE:^CN=([a-zA-Z0-9._-]+),.*$/$1/L,DEFAULT").unwrap();
 
         // Service account with standard naming
         let service_dn = "CN=kafka-producer-service,OU=Services,O=MyCompany,C=US";

@@ -124,7 +124,10 @@ impl SaslHandler {
         })?;
 
         let auth_bytes = request.auth_bytes.as_ref();
-        debug!(auth_bytes_len = auth_bytes.len(), "SASL authenticate request");
+        debug!(
+            auth_bytes_len = auth_bytes.len(),
+            "SASL authenticate request"
+        );
 
         // Check that we have an active session
         let (session, authenticator) = match (&mut self.session, &self.authenticator) {
@@ -340,9 +343,7 @@ mod tests {
         request_bytes.put_i16(5); // mechanism length
         request_bytes.put_slice(b"PLAIN");
 
-        let response = handler
-            .handle_sasl_handshake(1, 0, &request_bytes)
-            .unwrap();
+        let response = handler.handle_sasl_handshake(1, 0, &request_bytes).unwrap();
         assert_eq!(response.correlation_id, 1);
 
         // Verify session was started

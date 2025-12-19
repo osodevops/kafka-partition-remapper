@@ -105,8 +105,8 @@ impl FetchHandler {
 
                     // Translate high watermark
                     if virtual_data.high_watermark >= 0 {
-                        if let Ok(vm) =
-                            remapper.physical_to_virtual(physical_partition, virtual_data.high_watermark)
+                        if let Ok(vm) = remapper
+                            .physical_to_virtual(physical_partition, virtual_data.high_watermark)
                         {
                             if vm.virtual_partition == info.virtual_partition {
                                 virtual_data.high_watermark = vm.virtual_offset;
@@ -116,8 +116,8 @@ impl FetchHandler {
 
                     // Translate log start offset
                     if virtual_data.log_start_offset >= 0 {
-                        if let Ok(vm) =
-                            remapper.physical_to_virtual(physical_partition, virtual_data.log_start_offset)
+                        if let Ok(vm) = remapper
+                            .physical_to_virtual(physical_partition, virtual_data.log_start_offset)
                         {
                             if vm.virtual_partition == info.virtual_partition {
                                 virtual_data.log_start_offset = vm.virtual_offset;

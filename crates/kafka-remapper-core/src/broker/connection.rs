@@ -290,12 +290,18 @@ impl BrokerConnection {
                     .await?;
             }
             SaslMechanism::ScramSha256 => {
-                self.authenticate_scram::<ScramSha256>(&sasl_config.username, &sasl_config.password)
-                    .await?;
+                self.authenticate_scram::<ScramSha256>(
+                    &sasl_config.username,
+                    &sasl_config.password,
+                )
+                .await?;
             }
             SaslMechanism::ScramSha512 => {
-                self.authenticate_scram::<ScramSha512>(&sasl_config.username, &sasl_config.password)
-                    .await?;
+                self.authenticate_scram::<ScramSha512>(
+                    &sasl_config.username,
+                    &sasl_config.password,
+                )
+                .await?;
             }
             SaslMechanism::OAuthBearer => {
                 // OAUTHBEARER for broker connections is not yet implemented.
@@ -467,12 +473,10 @@ impl BrokerConnection {
         }
 
         // Parse server-first-message from response
-        let server_first_message =
-            String::from_utf8(server_first_response.auth_bytes.to_vec()).map_err(|_| {
-                ProxyError::BrokerUnavailable {
-                    broker_id: self.broker_id,
-                    message: "Invalid UTF-8 in server-first-message".to_string(),
-                }
+        let server_first_message = String::from_utf8(server_first_response.auth_bytes.to_vec())
+            .map_err(|_| ProxyError::BrokerUnavailable {
+                broker_id: self.broker_id,
+                message: "Invalid UTF-8 in server-first-message".to_string(),
             })?;
 
         debug!(server_first = %server_first_message, "received server-first-message");
@@ -528,7 +532,11 @@ impl BrokerConnection {
             .collect();
 
         // Build client-final-message
-        let client_final_message = format!("{},p={}", client_final_without_proof, BASE64.encode(&client_proof));
+        let client_final_message = format!(
+            "{},p={}",
+            client_final_without_proof,
+            BASE64.encode(&client_proof)
+        );
 
         debug!("sending client-final-message");
 
@@ -552,12 +560,10 @@ impl BrokerConnection {
         }
 
         // Parse and verify server-final-message
-        let server_final_message =
-            String::from_utf8(server_final_response.auth_bytes.to_vec()).map_err(|_| {
-                ProxyError::BrokerUnavailable {
-                    broker_id: self.broker_id,
-                    message: "Invalid UTF-8 in server-final-message".to_string(),
-                }
+        let server_final_message = String::from_utf8(server_final_response.auth_bytes.to_vec())
+            .map_err(|_| ProxyError::BrokerUnavailable {
+                broker_id: self.broker_id,
+                message: "Invalid UTF-8 in server-final-message".to_string(),
             })?;
 
         debug!(server_final = %server_final_message, "received server-final-message");
@@ -574,12 +580,17 @@ impl BrokerConnection {
             });
         }
 
-        debug!(mechanism = mechanism_name, "SCRAM authentication successful");
+        debug!(
+            mechanism = mechanism_name,
+            "SCRAM authentication successful"
+        );
         Ok(())
     }
 
     /// Parse server-first-message to extract combined nonce, salt, and iterations.
-    fn parse_server_first_message(message: &str) -> std::result::Result<(String, Vec<u8>, u32), String> {
+    fn parse_server_first_message(
+        message: &str,
+    ) -> std::result::Result<(String, Vec<u8>, u32), String> {
         let mut combined_nonce = None;
         let mut salt = None;
         let mut iterations = None;

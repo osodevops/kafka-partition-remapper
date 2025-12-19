@@ -134,9 +134,7 @@ fn build_client_verifier(ca_path: &Path) -> TlsResult<Arc<dyn ClientCertVerifier
 }
 
 /// Build a client certificate verifier that optionally verifies client certs.
-fn build_optional_client_verifier(
-    ca_path: &Path,
-) -> TlsResult<Arc<dyn ClientCertVerifier>> {
+fn build_optional_client_verifier(ca_path: &Path) -> TlsResult<Arc<dyn ClientCertVerifier>> {
     let root_store = build_root_store(ca_path)?;
 
     WebPkiClientVerifier::builder(Arc::new(root_store))

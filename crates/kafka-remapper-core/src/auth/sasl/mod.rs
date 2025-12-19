@@ -8,16 +8,22 @@
 //! - OAUTHBEARER - OAuth 2.0 bearer token authentication
 
 pub mod credentials;
+#[cfg(feature = "oauthbearer-jwt")]
+pub mod jwt;
 pub mod oauthbearer;
 pub mod plain;
 pub mod scram;
 
-pub use credentials::{create_credential_store, CredentialStore, InMemoryCredentialStore, StoredCredentials};
-pub use oauthbearer::{OAuthBearerAuthenticator, OAuthBearerClientMessage, TokenValidator, TokenValidationResult};
+pub use credentials::{
+    create_credential_store, CredentialStore, InMemoryCredentialStore, StoredCredentials,
+};
+pub use oauthbearer::{
+    OAuthBearerAuthenticator, OAuthBearerClientMessage, TokenValidationResult, TokenValidator,
+};
 pub use plain::PlainAuthenticator;
 pub use scram::{
-    generate_scram_credentials, generate_scram_credentials_with_salt, ScramCredentials,
-    ScramHash, ScramSessionState, ScramSha256, ScramSha256Authenticator, ScramSha512,
+    generate_scram_credentials, generate_scram_credentials_with_salt, ScramCredentials, ScramHash,
+    ScramSessionState, ScramSha256, ScramSha256Authenticator, ScramSha512,
     ScramSha512Authenticator,
 };
 
@@ -75,11 +81,8 @@ pub trait SaslAuthenticator: Send + Sync + std::fmt::Debug {
     fn mechanism_name(&self) -> &'static str;
 
     /// Process a client authentication message.
-    fn authenticate_step(
-        &self,
-        client_message: &[u8],
-        session: &mut SaslSession,
-    ) -> SaslStepResult;
+    fn authenticate_step(&self, client_message: &[u8], session: &mut SaslSession)
+        -> SaslStepResult;
 
     /// Check if authentication is complete for this session.
     fn is_complete(&self, session: &SaslSession) -> bool;
@@ -104,24 +107,23 @@ impl SaslServer {
         for mechanism in &config.enabled_mechanisms {
             match mechanism {
                 SaslMechanism::Plain => {
-                    authenticators.push(Arc::new(PlainAuthenticator::new(
-                        Arc::clone(&credential_store),
-                    )));
+                    authenticators.push(Arc::new(PlainAuthenticator::new(Arc::clone(
+                        &credential_store,
+                    ))));
                 }
                 SaslMechanism::ScramSha256 => {
-                    authenticators.push(Arc::new(ScramSha256Authenticator::new(
-                        Arc::clone(&credential_store),
-                    )));
+                    authenticators.push(Arc::new(ScramSha256Authenticator::new(Arc::clone(
+                        &credential_store,
+                    ))));
                 }
                 SaslMechanism::ScramSha512 => {
-                    authenticators.push(Arc::new(ScramSha512Authenticator::new(
-                        Arc::clone(&credential_store),
-                    )));
+                    authenticators.push(Arc::new(ScramSha512Authenticator::new(Arc::clone(
+                        &credential_store,
+                    ))));
                 }
                 SaslMechanism::OAuthBearer => {
-                    let oauth_auth = OAuthBearerAuthenticator::from_config(
-                        config.oauthbearer.as_ref(),
-                    )?;
+                    let oauth_auth =
+                        OAuthBearerAuthenticator::from_config(config.oauthbearer.as_ref())?;
                     authenticators.push(Arc::new(oauth_auth));
                 }
             }
@@ -160,7 +162,10 @@ impl SaslServer {
     /// # Errors
     ///
     /// Returns an error if the mechanism is not supported.
-    pub fn start_session(&self, mechanism: &str) -> Result<(SaslSession, Arc<dyn SaslAuthenticator>)> {
+    pub fn start_session(
+        &self,
+        mechanism: &str,
+    ) -> Result<(SaslSession, Arc<dyn SaslAuthenticator>)> {
         let authenticator = self
             .get_authenticator(mechanism)
             .ok_or_else(|| AuthError::UnsupportedMechanism(mechanism.to_string()))?;
@@ -181,12 +186,10 @@ mod tests {
         ClientSaslConfig {
             enabled_mechanisms: vec![SaslMechanism::Plain],
             credentials: CredentialConfig::Inline {
-                users: vec![
-                    UserCredential {
-                        username: "test_user".to_string(),
-                        password: "test_pass".to_string(),
-                    },
-                ],
+                users: vec![UserCredential {
+                    username: "test_user".to_string(),
+                    password: "test_pass".to_string(),
+                }],
             },
             oauthbearer: None,
         }

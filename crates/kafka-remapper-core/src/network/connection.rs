@@ -225,9 +225,11 @@ impl ConnectionHandler {
                     principal = %self.context.principal(),
                     "request rejected: SASL authentication required"
                 );
-                Err(ProxyError::Auth(crate::error::AuthError::AuthenticationFailed(
-                    "SASL authentication required".to_string(),
-                )))
+                Err(ProxyError::Auth(
+                    crate::error::AuthError::AuthenticationFailed(
+                        "SASL authentication required".to_string(),
+                    ),
+                ))
             }
         }
     }

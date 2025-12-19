@@ -172,17 +172,15 @@ pub fn generate_scram_credentials_with_salt<H: ScramHash>(
 ///
 /// Format: `[gs2-header]n=username,r=client-nonce`
 /// Returns (gs2_header, username, client_nonce)
-pub fn parse_client_first_message(
-    message: &str,
-) -> Result<(String, String, String), AuthError> {
+pub fn parse_client_first_message(message: &str) -> Result<(String, String, String), AuthError> {
     // Find the GS2 header (everything before the bare message)
     let (gs2_header, bare_message) = if let Some(pos) = message.find("n=") {
         // GS2 header is everything before "n="
         (&message[..pos], &message[pos..])
-    } else if message.starts_with("n,,") {
-        ("n,,", &message[3..])
-    } else if message.starts_with("y,,") {
-        ("y,,", &message[3..])
+    } else if let Some(stripped) = message.strip_prefix("n,,") {
+        ("n,,", stripped)
+    } else if let Some(stripped) = message.strip_prefix("y,,") {
+        ("y,,", stripped)
     } else if let Some(pos) = message.find(",,") {
         // Handle "p=xxx,," or other variants
         let header_end = pos + 2;
@@ -225,7 +223,9 @@ pub fn parse_client_final_message(message: &str) -> Result<(String, Vec<u8>), Au
             .map_err(|_| AuthError::InvalidMessage("Invalid proof encoding".to_string()))?;
         (&message[..idx], proof)
     } else {
-        return Err(AuthError::InvalidMessage("Missing client proof".to_string()));
+        return Err(AuthError::InvalidMessage(
+            "Missing client proof".to_string(),
+        ));
     };
 
     // Verify channel binding is present
@@ -289,8 +289,8 @@ impl<H: ScramHash + 'static> ScramAuthenticator<H> {
         message: &str,
     ) -> Result<(String, String, String), AuthError> {
         // Skip GS2 header (n,,) if present
-        let bare_message = if message.starts_with("n,,") {
-            &message[3..]
+        let bare_message = if let Some(stripped) = message.strip_prefix("n,,") {
+            stripped
         } else if message.starts_with("y,,") || message.starts_with("p=") {
             return Err(AuthError::InvalidMessage(
                 "Channel binding not supported".to_string(),
@@ -361,7 +361,9 @@ impl<H: ScramHash + 'static> ScramAuthenticator<H> {
                 .map_err(|_| AuthError::InvalidMessage("Invalid proof encoding".to_string()))?;
             (&message[..idx], proof)
         } else {
-            return Err(AuthError::InvalidMessage("Missing client proof".to_string()));
+            return Err(AuthError::InvalidMessage(
+                "Missing client proof".to_string(),
+            ));
         };
 
         let mut nonce = None;
@@ -523,9 +525,9 @@ impl<H: ScramHash + 'static> SaslAuthenticator for ScramAuthenticator<H> {
 
                 SaslStepResult::Complete(server_final.into_bytes())
             }
-            _ => SaslStepResult::Failed(AuthError::InvalidMessage(
-                "Invalid SCRAM step".to_string(),
-            )),
+            _ => {
+                SaslStepResult::Failed(AuthError::InvalidMessage("Invalid SCRAM step".to_string()))
+            }
         }
     }
 
@@ -544,7 +546,11 @@ mod tests {
     use crate::auth::sasl::credentials::InMemoryCredentialStore;
 
     fn create_test_credentials_sha256() -> ScramCredentials {
-        generate_scram_credentials_with_salt::<ScramSha256>("password123", b"testsalt12345678", 4096)
+        generate_scram_credentials_with_salt::<ScramSha256>(
+            "password123",
+            b"testsalt12345678",
+            4096,
+        )
     }
 
     #[test]
@@ -567,10 +573,8 @@ mod tests {
     #[test]
     fn test_credentials_are_deterministic() {
         let salt = b"fixed_salt_value";
-        let creds1 =
-            generate_scram_credentials_with_salt::<ScramSha256>("password", salt, 4096);
-        let creds2 =
-            generate_scram_credentials_with_salt::<ScramSha256>("password", salt, 4096);
+        let creds1 = generate_scram_credentials_with_salt::<ScramSha256>("password", salt, 4096);
+        let creds2 = generate_scram_credentials_with_salt::<ScramSha256>("password", salt, 4096);
 
         assert_eq!(creds1.stored_key, creds2.stored_key);
         assert_eq!(creds1.server_key, creds2.server_key);
@@ -661,7 +665,11 @@ mod tests {
             .map(|(a, b)| a ^ b)
             .collect();
 
-        let client_final = format!("{},p={}", client_final_without_proof, BASE64.encode(&client_proof));
+        let client_final = format!(
+            "{},p={}",
+            client_final_without_proof,
+            BASE64.encode(&client_proof)
+        );
 
         let result = auth.authenticate_step(client_final.as_bytes(), &mut session);
 
@@ -687,7 +695,8 @@ mod tests {
 
         // Pre-compute credentials with the CORRECT password
         let salt = b"test_salt_123456";
-        let creds = generate_scram_credentials_with_salt::<ScramSha256>("correct_password", salt, 4096);
+        let creds =
+            generate_scram_credentials_with_salt::<ScramSha256>("correct_password", salt, 4096);
         auth.add_scram_credentials("bob".to_string(), creds);
 
         let mut session = SaslSession::new();
@@ -726,11 +735,18 @@ mod tests {
             .map(|(a, b)| a ^ b)
             .collect();
 
-        let client_final = format!("{},p={}", client_final_without_proof, BASE64.encode(&wrong_proof));
+        let client_final = format!(
+            "{},p={}",
+            client_final_without_proof,
+            BASE64.encode(&wrong_proof)
+        );
 
         let result = auth.authenticate_step(client_final.as_bytes(), &mut session);
 
-        assert!(matches!(result, SaslStepResult::Failed(AuthError::InvalidCredentials)));
+        assert!(matches!(
+            result,
+            SaslStepResult::Failed(AuthError::InvalidCredentials)
+        ));
         assert!(!session.is_authenticated());
     }
 
@@ -743,7 +759,10 @@ mod tests {
         let client_first = "n,,n=unknown_user,r=nonce123";
 
         let result = auth.authenticate_step(client_first.as_bytes(), &mut session);
-        assert!(matches!(result, SaslStepResult::Failed(AuthError::InvalidCredentials)));
+        assert!(matches!(
+            result,
+            SaslStepResult::Failed(AuthError::InvalidCredentials)
+        ));
     }
 
     #[test]
@@ -808,7 +827,10 @@ mod tests {
         );
         let client_final_without_proof = format!("c=biws,r={}", server_nonce);
 
-        let auth_message = format!("{},{},{}", client_first_bare, server_first, client_final_without_proof);
+        let auth_message = format!(
+            "{},{},{}",
+            client_first_bare, server_first, client_final_without_proof
+        );
 
         // Compute the proof
         let salted_password = ScramSha256::pbkdf2(password.as_bytes(), &salt, iterations);
@@ -1052,7 +1074,8 @@ mod tests {
         };
 
         // Step 2: Client final with WRONG nonce (doesn't match combined nonce)
-        let client_final = "c=biws,r=wrong_nonce_here,p=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+        let client_final =
+            "c=biws,r=wrong_nonce_here,p=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
         let result = auth.authenticate_step(client_final.as_bytes(), &mut session);
 
         // Should fail because nonce doesn't match
@@ -1110,7 +1133,8 @@ mod tests {
 
         let mut auth = ScramSha512Authenticator::new(Arc::clone(&store));
         let salt = b"sha512_test_salt";
-        let creds = generate_scram_credentials_with_salt::<ScramSha512>("secretpassword", salt, 4096);
+        let creds =
+            generate_scram_credentials_with_salt::<ScramSha512>("secretpassword", salt, 4096);
         auth.add_scram_credentials("bob".to_string(), creds);
 
         let mut session = SaslSession::new();
@@ -1155,7 +1179,11 @@ mod tests {
         // SHA-512 produces 64-byte output
         assert_eq!(client_proof.len(), 64);
 
-        let client_final = format!("{},p={}", client_final_without_proof, BASE64.encode(&client_proof));
+        let client_final = format!(
+            "{},p={}",
+            client_final_without_proof,
+            BASE64.encode(&client_proof)
+        );
 
         let result = auth.authenticate_step(client_final.as_bytes(), &mut session);
 
@@ -1204,14 +1232,22 @@ mod tests {
     #[test]
     fn test_minimum_iterations() {
         // RFC 7677 specifies minimum 4096 iterations
-        let creds = generate_scram_credentials_with_salt::<ScramSha256>("password", b"salt1234567890", 4096);
+        let creds = generate_scram_credentials_with_salt::<ScramSha256>(
+            "password",
+            b"salt1234567890",
+            4096,
+        );
         assert_eq!(creds.iterations, 4096);
     }
 
     #[test]
     fn test_high_iterations() {
         // Test with higher iteration count
-        let creds = generate_scram_credentials_with_salt::<ScramSha256>("password", b"salt1234567890", 10000);
+        let creds = generate_scram_credentials_with_salt::<ScramSha256>(
+            "password",
+            b"salt1234567890",
+            10000,
+        );
         assert_eq!(creds.iterations, 10000);
     }
 
@@ -1228,8 +1264,14 @@ mod tests {
         let store: Arc<dyn CredentialStore> = Arc::new(store);
 
         let mut auth = ScramSha256Authenticator::new(Arc::clone(&store));
-        auth.add_scram_credentials("user1".to_string(), generate_scram_credentials::<ScramSha256>("pass1"));
-        auth.add_scram_credentials("user2".to_string(), generate_scram_credentials::<ScramSha256>("pass2"));
+        auth.add_scram_credentials(
+            "user1".to_string(),
+            generate_scram_credentials::<ScramSha256>("pass1"),
+        );
+        auth.add_scram_credentials(
+            "user2".to_string(),
+            generate_scram_credentials::<ScramSha256>("pass2"),
+        );
 
         // Create two independent sessions
         let mut session1 = SaslSession::new();
@@ -1244,14 +1286,8 @@ mod tests {
         assert!(matches!(result2, SaslStepResult::Continue(_)));
 
         // Sessions should have different state
-        assert_eq!(
-            session1.scram_state.as_ref().unwrap().username,
-            "user1"
-        );
-        assert_eq!(
-            session2.scram_state.as_ref().unwrap().username,
-            "user2"
-        );
+        assert_eq!(session1.scram_state.as_ref().unwrap().username, "user1");
+        assert_eq!(session2.scram_state.as_ref().unwrap().username, "user2");
     }
 
     // ============================================================================

@@ -19,8 +19,8 @@ use tokio::sync::broadcast;
 use tracing::{debug, error, info, instrument, warn};
 
 use crate::auth::{
-    AuthenticationContext, DefaultPrincipalBuilder, Principal, PrincipalBuilder,
-    SaslServer, SslAuthenticationContext,
+    AuthenticationContext, DefaultPrincipalBuilder, Principal, PrincipalBuilder, SaslServer,
+    SslAuthenticationContext,
 };
 use crate::config::{ProxyConfig, SecurityProtocol};
 use crate::error::{ProxyError, Result};

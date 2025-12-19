@@ -427,7 +427,10 @@ impl ClientSaslConfig {
         }
 
         // Validate OAUTHBEARER config if OAUTHBEARER is enabled
-        if self.enabled_mechanisms.contains(&SaslMechanism::OAuthBearer) {
+        if self
+            .enabled_mechanisms
+            .contains(&SaslMechanism::OAuthBearer)
+        {
             if let Some(ref oauth_config) = self.oauthbearer {
                 oauth_config.validate()?;
             }
@@ -721,7 +724,9 @@ impl TopicMappingConfig {
     pub fn merge_with_defaults(&self, global: &MappingConfig) -> MappingConfig {
         MappingConfig {
             virtual_partitions: self.virtual_partitions.unwrap_or(global.virtual_partitions),
-            physical_partitions: self.physical_partitions.unwrap_or(global.physical_partitions),
+            physical_partitions: self
+                .physical_partitions
+                .unwrap_or(global.physical_partitions),
             offset_range: self.offset_range.unwrap_or(global.offset_range),
             topics: HashMap::new(), // Per-topic config doesn't have nested topics
         }
@@ -929,10 +934,7 @@ impl MappingConfig {
         // Validate each per-topic configuration
         for (topic_pattern, topic_config) in &self.topics {
             let merged = topic_config.merge_with_defaults(self);
-            Self::validate_topic_config(
-                &merged,
-                topic_pattern,
-            )?;
+            Self::validate_topic_config(&merged, topic_pattern)?;
         }
 
         Ok(())

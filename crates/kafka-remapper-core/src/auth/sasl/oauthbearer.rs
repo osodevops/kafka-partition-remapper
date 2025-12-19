@@ -78,8 +78,8 @@ pub struct NoOpTokenValidator;
 impl TokenValidator for NoOpTokenValidator {
     fn validate(&self, token: &str) -> AuthResult<TokenValidationResult> {
         // Extract principal from JWT without verification
-        let principal = extract_jwt_subject_unverified(token)
-            .unwrap_or_else(|| "oauth-user".to_string());
+        let principal =
+            extract_jwt_subject_unverified(token).unwrap_or_else(|| "oauth-user".to_string());
 
         debug!(principal = %principal, "OAUTHBEARER passthrough - extracted principal without validation");
 
@@ -369,10 +369,8 @@ impl SaslAuthenticator for OAuthBearerAuthenticator {
                 warn!(error = %e, "OAUTHBEARER token validation failed");
 
                 // Return error response in JSON format
-                let error_response = Self::build_error_response(
-                    "invalid_token",
-                    Some(&e.to_string()),
-                );
+                let error_response =
+                    Self::build_error_response("invalid_token", Some(&e.to_string()));
 
                 SaslStepResult::Continue(error_response)
             }
@@ -420,7 +418,10 @@ mod tests {
 
         assert_eq!(parsed.token, "token123");
         assert_eq!(parsed.extensions.len(), 1);
-        assert_eq!(parsed.extensions[0], ("scope".to_string(), "read write".to_string()));
+        assert_eq!(
+            parsed.extensions[0],
+            ("scope".to_string(), "read write".to_string())
+        );
     }
 
     #[test]
@@ -512,7 +513,10 @@ mod tests {
 
         assert!(matches!(result, SaslStepResult::Complete(_)));
         // authzid should override the token's subject
-        assert_eq!(session.authenticated_user, Some("admin@example.com".to_string()));
+        assert_eq!(
+            session.authenticated_user,
+            Some("admin@example.com".to_string())
+        );
     }
 
     #[test]
@@ -539,10 +543,8 @@ mod tests {
 
     #[test]
     fn test_build_error_response() {
-        let response = OAuthBearerAuthenticator::build_error_response(
-            "invalid_token",
-            Some("Token expired"),
-        );
+        let response =
+            OAuthBearerAuthenticator::build_error_response("invalid_token", Some("Token expired"));
         let json = String::from_utf8(response).unwrap();
 
         assert!(json.contains("\"status\":\"invalid_token\""));
@@ -553,8 +555,14 @@ mod tests {
     fn test_extract_json_string_field() {
         let json = r#"{"sub":"alice","iss":"https://example.com"}"#;
 
-        assert_eq!(extract_json_string_field(json, "sub"), Some("alice".to_string()));
-        assert_eq!(extract_json_string_field(json, "iss"), Some("https://example.com".to_string()));
+        assert_eq!(
+            extract_json_string_field(json, "sub"),
+            Some("alice".to_string())
+        );
+        assert_eq!(
+            extract_json_string_field(json, "iss"),
+            Some("https://example.com".to_string())
+        );
         assert_eq!(extract_json_string_field(json, "missing"), None);
     }
 

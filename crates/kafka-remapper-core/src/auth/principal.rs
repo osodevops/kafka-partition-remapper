@@ -334,9 +334,7 @@ mod tests {
             username: "alice",
             client_address: addr,
         };
-        let principal = builder
-            .build(AuthenticationContext::Sasl(ctx))
-            .unwrap();
+        let principal = builder.build(AuthenticationContext::Sasl(ctx)).unwrap();
         assert_eq!(principal.name, "alice");
         assert_eq!(principal.auth_method, AuthMethod::Sasl);
     }

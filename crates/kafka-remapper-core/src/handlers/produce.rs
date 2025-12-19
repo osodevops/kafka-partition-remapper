@@ -101,8 +101,8 @@ impl ProduceHandler {
 
                     // Translate base offset back to virtual
                     if virtual_response.base_offset >= 0 {
-                        if let Ok(virtual_mapping) =
-                            remapper.physical_to_virtual(physical_partition, virtual_response.base_offset)
+                        if let Ok(virtual_mapping) = remapper
+                            .physical_to_virtual(physical_partition, virtual_response.base_offset)
                         {
                             virtual_response.base_offset = virtual_mapping.virtual_offset;
                         }
