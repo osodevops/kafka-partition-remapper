@@ -1,5 +1,45 @@
 //! OffsetCommit request handler.
 //!
+//! # DEPRECATED - DO NOT USE
+//!
+//! **WARNING:** This handler is BROKEN and should NOT be wired into the connection handler.
+//!
+//! ## The Problem
+//!
+//! This handler translates virtual partition numbers to physical partition numbers.
+//! However, multiple virtual partitions map to the same physical partition (e.g., with
+//! 100 virtual → 10 physical, virtual partitions 0, 10, 20, ..., 90 all map to physical 0).
+//!
+//! Offset storage in `__consumer_offsets` is keyed by `(group_id, topic, partition)`.
+//! If we translate partition numbers, all virtual partitions mapping to the same physical
+//! partition will **overwrite each other's offsets**, causing **DATA LOSS**.
+//!
+//! ## Example
+//!
+//! ```text
+//! Consumer commits virtual partition 0, offset 100
+//!   → Translated to (group, topic, partition=0)
+//!   → Stored at key: (group, topic, 0)
+//!
+//! Consumer commits virtual partition 10, offset 200
+//!   → Translated to (group, topic, partition=0)  // SAME KEY!
+//!   → Overwrites previous offset!
+//!
+//! Consumer fetches offset for virtual partition 0
+//!   → Returns offset from partition 10 - WRONG!
+//! ```
+//!
+//! ## Correct Approach
+//!
+//! Use **passthrough** (in `connection.rs`). The broker accepts any partition number
+//! in `__consumer_offsets`, so we store offsets keyed by virtual partition number directly.
+//! This avoids collisions between virtual partitions on the same physical partition.
+//!
+//! See `docs/implementation-plan.md` Appendix A for detailed analysis.
+//!
+//! ---
+//!
+//! Original description (for historical reference):
 //! Translates virtual partition indices and offsets to physical before forwarding
 //! to the broker. The broker stores the physical offset, but consumers always
 //! work with virtual offsets.
@@ -15,24 +55,32 @@ use tracing::debug;
 use crate::broker::BrokerPool;
 use crate::error::{ProxyError, Result};
 use crate::network::codec::KafkaFrame;
-use crate::remapper::PartitionRemapper;
+use crate::remapper::TopicRemapperRegistry;
 
 use super::ProtocolHandler;
 
 /// Handler for OffsetCommit requests.
 ///
-/// Translates virtual partitions and offsets to physical before forwarding.
+/// # Deprecated
+///
+/// **DO NOT USE** - This handler causes data loss due to partition key collisions.
+/// Use passthrough instead. See module-level documentation for details.
+#[deprecated(
+    since = "0.6.0",
+    note = "This handler is broken - multiple virtual partitions collide at the same physical partition key, causing offset overwrites. Use passthrough instead."
+)]
 pub struct OffsetCommitHandler {
-    remapper: Arc<PartitionRemapper>,
+    registry: Arc<TopicRemapperRegistry>,
     broker_pool: Arc<BrokerPool>,
 }
 
+#[allow(deprecated)]
 impl OffsetCommitHandler {
     /// Create a new OffsetCommit handler.
     #[must_use]
-    pub fn new(remapper: Arc<PartitionRemapper>, broker_pool: Arc<BrokerPool>) -> Self {
+    pub fn new(registry: Arc<TopicRemapperRegistry>, broker_pool: Arc<BrokerPool>) -> Self {
         Self {
-            remapper,
+            registry,
             broker_pool,
         }
     }
@@ -40,15 +88,17 @@ impl OffsetCommitHandler {
     /// Translate virtual partitions and offsets to physical in the request.
     fn translate_request(&self, request: &mut OffsetCommitRequest) -> Result<()> {
         for topic in &mut request.topics {
+            let topic_name = topic.name.to_string();
+            let remapper = self.registry.get_remapper(&topic_name);
+
             for partition in &mut topic.partitions {
                 let virtual_partition = partition.partition_index;
                 let virtual_offset = partition.committed_offset;
 
                 // Translate to physical
-                let physical = self
-                    .remapper
+                let physical = remapper
                     .virtual_to_physical_offset(virtual_partition, virtual_offset)
-                    .map_err(|e| ProxyError::Remap(e))?;
+                    .map_err(ProxyError::Remap)?;
 
                 debug!(
                     virtual_partition,
@@ -69,6 +119,7 @@ impl OffsetCommitHandler {
 }
 
 #[async_trait]
+#[allow(deprecated)]
 impl ProtocolHandler for OffsetCommitHandler {
     async fn handle(&self, frame: &KafkaFrame) -> Result<BytesMut> {
         debug!(
@@ -113,7 +164,10 @@ impl ProtocolHandler for OffsetCommitHandler {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // Tests kept for historical reference - handler is deprecated
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::config::{KafkaConfig, MappingConfig, SecurityProtocol};
     use kafka_protocol::messages::offset_commit_request::{
@@ -121,11 +175,12 @@ mod tests {
     };
     use kafka_protocol::protocol::StrBytes;
 
-    fn test_remapper() -> Arc<PartitionRemapper> {
-        Arc::new(PartitionRemapper::new(&MappingConfig {
+    fn test_registry() -> Arc<TopicRemapperRegistry> {
+        Arc::new(TopicRemapperRegistry::new(&MappingConfig {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: HashMap::new(),
         }))
     }
 
@@ -143,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_translate_request() {
-        let handler = OffsetCommitHandler::new(test_remapper(), test_pool());
+        let handler = OffsetCommitHandler::new(test_registry(), test_pool());
 
         let mut request = OffsetCommitRequest::default();
         request.group_id =
@@ -177,7 +232,7 @@ mod tests {
 
     #[test]
     fn test_translate_multiple_partitions() {
-        let handler = OffsetCommitHandler::new(test_remapper(), test_pool());
+        let handler = OffsetCommitHandler::new(test_registry(), test_pool());
 
         let mut request = OffsetCommitRequest::default();
         request.group_id =

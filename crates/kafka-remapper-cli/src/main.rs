@@ -148,7 +148,7 @@ async fn run_proxy(config: ProxyConfig) -> anyhow::Result<()> {
     }
 
     // Start proxy listener
-    let listener = ProxyListener::new(config);
+    let listener = ProxyListener::new(config)?;
     let shutdown_handle = listener.shutdown_handle();
 
     // Handle shutdown signals

@@ -15,22 +15,22 @@ use tracing::debug;
 use crate::broker::BrokerPool;
 use crate::error::{ProxyError, Result};
 use crate::network::codec::KafkaFrame;
-use crate::remapper::PartitionRemapper;
+use crate::remapper::TopicRemapperRegistry;
 
 use super::ProtocolHandler;
 
 /// Handler for Fetch requests.
 pub struct FetchHandler {
-    remapper: Arc<PartitionRemapper>,
+    registry: Arc<TopicRemapperRegistry>,
     broker_pool: Arc<BrokerPool>,
 }
 
 impl FetchHandler {
     /// Create a new Fetch handler.
     #[must_use]
-    pub fn new(remapper: Arc<PartitionRemapper>, broker_pool: Arc<BrokerPool>) -> Self {
+    pub fn new(registry: Arc<TopicRemapperRegistry>, broker_pool: Arc<BrokerPool>) -> Self {
         Self {
-            remapper,
+            registry,
             broker_pool,
         }
     }
@@ -44,16 +44,16 @@ impl FetchHandler {
 
         for topic in &mut request.topics {
             let topic_name = topic.topic.to_string();
+            let remapper = self.registry.get_remapper(&topic_name);
 
             for partition in &mut topic.partitions {
                 let virtual_partition = partition.partition;
                 let virtual_offset = partition.fetch_offset;
 
                 // Map to physical
-                let physical = self
-                    .remapper
+                let physical = remapper
                     .virtual_to_physical_offset(virtual_partition, virtual_offset)
-                    .map_err(|e| ProxyError::Remap(e))?;
+                    .map_err(ProxyError::Remap)?;
 
                 debug!(
                     topic = %topic_name,
@@ -89,6 +89,7 @@ impl FetchHandler {
     ) -> Result<FetchResponse> {
         for topic_response in &mut response.responses {
             let topic_name = topic_response.topic.to_string();
+            let remapper = self.registry.get_remapper(&topic_name);
             let original_partitions = std::mem::take(&mut topic_response.partitions);
             let mut virtual_partitions = Vec::new();
 
@@ -104,9 +105,8 @@ impl FetchHandler {
 
                     // Translate high watermark
                     if virtual_data.high_watermark >= 0 {
-                        if let Ok(vm) = self
-                            .remapper
-                            .physical_to_virtual(physical_partition, virtual_data.high_watermark)
+                        if let Ok(vm) =
+                            remapper.physical_to_virtual(physical_partition, virtual_data.high_watermark)
                         {
                             if vm.virtual_partition == info.virtual_partition {
                                 virtual_data.high_watermark = vm.virtual_offset;
@@ -116,9 +116,8 @@ impl FetchHandler {
 
                     // Translate log start offset
                     if virtual_data.log_start_offset >= 0 {
-                        if let Ok(vm) = self
-                            .remapper
-                            .physical_to_virtual(physical_partition, virtual_data.log_start_offset)
+                        if let Ok(vm) =
+                            remapper.physical_to_virtual(physical_partition, virtual_data.log_start_offset)
                         {
                             if vm.virtual_partition == info.virtual_partition {
                                 virtual_data.log_start_offset = vm.virtual_offset;
@@ -128,7 +127,7 @@ impl FetchHandler {
 
                     // Translate last stable offset
                     if virtual_data.last_stable_offset >= 0 {
-                        if let Ok(vm) = self.remapper.physical_to_virtual(
+                        if let Ok(vm) = remapper.physical_to_virtual(
                             physical_partition,
                             virtual_data.last_stable_offset,
                         ) {
@@ -272,11 +271,12 @@ mod tests {
     use super::*;
     use crate::config::{KafkaConfig, MappingConfig, SecurityProtocol};
 
-    fn test_remapper() -> Arc<PartitionRemapper> {
-        Arc::new(PartitionRemapper::new(&MappingConfig {
+    fn test_registry() -> Arc<TopicRemapperRegistry> {
+        Arc::new(TopicRemapperRegistry::new(&MappingConfig {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: HashMap::new(),
         }))
     }
 

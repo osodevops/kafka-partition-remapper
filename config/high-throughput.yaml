@@ -1,0 +1,131 @@
+# Kafka Partition Remapping Proxy - High-Throughput Configuration
+#
+# This configuration is optimized for high-throughput, low-latency workloads:
+# - IoT data ingestion (millions of messages/sec)
+# - Real-time event streaming
+# - Log aggregation pipelines
+#
+# Tuning philosophy:
+# - High virtual partition count for parallelism
+# - Aggressive compression ratios where safe
+# - Short timeouts to fail fast
+# - Frequent metadata refresh for broker awareness
+#
+# Hardware recommendations:
+# - 16+ CPU cores
+# - 32GB+ RAM
+# - 10Gbps+ network
+# - Deploy multiple proxy instances behind load balancer
+
+listen:
+  address: "0.0.0.0:9092"
+  advertised_address: "kafka-proxy-lb.streaming.internal:9092"
+  # High connection limit for many producers/consumers
+  max_connections: 20000
+
+  security:
+    # SASL_SSL for production security with minimal overhead
+    protocol: SASL_SSL
+    tls:
+      cert_path: "/etc/kafka-proxy/tls/server.crt"
+      key_path: "/etc/kafka-proxy/tls/server.key"
+    sasl:
+      # PLAIN is fastest; use only with TLS
+      enabled_mechanisms:
+        - PLAIN
+        - SCRAM-SHA-256
+      credentials:
+        file: "/etc/kafka-proxy/secrets/credentials.yaml"
+
+kafka:
+  bootstrap_servers:
+    - "kafka-1.streaming.internal:9093"
+    - "kafka-2.streaming.internal:9093"
+    - "kafka-3.streaming.internal:9093"
+    - "kafka-4.streaming.internal:9093"
+    - "kafka-5.streaming.internal:9093"
+  # Aggressive timeouts - fail fast, let client retry
+  connection_timeout_ms: 3000
+  request_timeout_ms: 15000
+  # Frequent refresh to track broker changes quickly
+  metadata_refresh_interval_secs: 10
+
+  security_protocol: SASL_SSL
+  tls:
+    ca_cert_path: "/etc/kafka-proxy/tls/kafka-ca.crt"
+  sasl:
+    mechanism: PLAIN
+    username: "proxy-service"
+    password: "${KAFKA_PROXY_PASSWORD}"
+
+mapping:
+  # Aggressive 100:1 default compression
+  # 10,000 virtual partitions -> 100 physical partitions
+  virtual_partitions: 10000
+  physical_partitions: 100
+  offset_range: 1099511627776
+
+  topics:
+    # =========================================
+    # Ultra-High Throughput Topics
+    # =========================================
+
+    # IoT sensor data: extreme parallelism needed
+    # 50,000 virtual partitions for massive consumer parallelism
+    "iot\\.sensors\\..*":
+      virtual_partitions: 50000
+      physical_partitions: 100
+
+    # Clickstream events: high volume, many consumers
+    "clickstream":
+      virtual_partitions: 20000
+      physical_partitions: 100
+
+    # Application logs: high volume aggregation
+    "logs\\..*":
+      virtual_partitions: 10000
+      physical_partitions: 50
+
+    # =========================================
+    # High Throughput Topics
+    # =========================================
+
+    # Real-time metrics
+    "metrics\\..*":
+      virtual_partitions: 5000
+      physical_partitions: 50
+      # Smaller offset range for metrics (typically short retention)
+      offset_range: 1073741824  # 2^30
+
+    # Transaction events
+    "transactions":
+      virtual_partitions: 2000
+      physical_partitions: 40
+
+    # =========================================
+    # Standard Topics (use defaults)
+    # =========================================
+    # Topics not listed use 10,000:100 default mapping
+
+    # =========================================
+    # Low-Latency Topics (minimal remapping overhead)
+    # =========================================
+
+    # Real-time alerts: minimize any processing
+    "alerts":
+      virtual_partitions: 100
+      physical_partitions: 100  # 1:1, no remapping
+
+    # Control plane: low volume, low latency critical
+    "control\\..*":
+      virtual_partitions: 10
+      physical_partitions: 10  # 1:1, no remapping
+
+metrics:
+  enabled: true
+  address: "0.0.0.0:9090"
+
+logging:
+  # Warn level to reduce logging overhead
+  level: "warn"
+  json: true

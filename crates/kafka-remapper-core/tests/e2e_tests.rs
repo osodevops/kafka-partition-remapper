@@ -316,6 +316,7 @@ impl KafkaTestEnvironment {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: std::collections::HashMap::new(),
         });
 
         // Wait for Kafka to be ready - try to connect with retries

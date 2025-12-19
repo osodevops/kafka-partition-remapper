@@ -44,6 +44,10 @@ pub enum ConfigError {
     /// Invalid address format.
     #[error("invalid address format: {0} (expected 'host:port')")]
     InvalidAddress(String),
+
+    /// General validation error.
+    #[error("validation error: {0}")]
+    ValidationError(String),
 }
 
 /// Errors that occur during proxy operation.
@@ -153,6 +157,10 @@ pub enum AuthError {
     #[error("authentication failed: {0}")]
     AuthenticationFailed(String),
 
+    /// Invalid credentials provided.
+    #[error("invalid credentials")]
+    InvalidCredentials,
+
     /// SASL handshake failed.
     #[error("SASL handshake error: {0}")]
     HandshakeError(String),
@@ -164,6 +172,30 @@ pub enum AuthError {
     /// Invalid SASL protocol message.
     #[error("invalid SASL message: {0}")]
     InvalidMessage(String),
+
+    /// Credential store error.
+    #[error("credential store error: {0}")]
+    CredentialStore(String),
+
+    /// Configuration error (e.g., OAUTHBEARER setup).
+    #[error("authentication configuration error: {0}")]
+    Configuration(String),
+
+    /// OAuth token validation failed.
+    #[error("OAuth token validation failed: {0}")]
+    TokenValidationFailed(String),
+
+    /// OAuth token has expired.
+    #[error("OAuth token expired")]
+    TokenExpired,
+
+    /// OAuth token signature verification failed.
+    #[error("OAuth token signature invalid")]
+    TokenSignatureInvalid,
+
+    /// Required scope missing from OAuth token.
+    #[error("missing required OAuth scope: {0}")]
+    MissingScope(String),
 
     /// Unexpected error during authentication.
     #[error("unexpected authentication error: {0}")]

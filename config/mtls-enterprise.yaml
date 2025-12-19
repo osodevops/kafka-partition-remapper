@@ -1,0 +1,92 @@
+# Kafka Partition Remapping Proxy - mTLS Enterprise Configuration
+#
+# This configuration implements mutual TLS (mTLS) authentication where:
+# - Clients authenticate using X.509 certificates
+# - Principal is extracted from certificate Subject DN
+# - Proxy authenticates to brokers using its own client certificate
+#
+# Certificate requirements:
+#   Client certificates: Issued by trusted CA, CN contains username
+#   Proxy server cert: Presented to clients during TLS handshake
+#   Proxy client cert: Used to authenticate to Kafka brokers
+#
+# Principal extraction rules:
+#   "CN=alice,OU=Engineering,O=Company,C=US" -> "alice"
+
+listen:
+  address: "0.0.0.0:9093"
+  advertised_address: "kafka-proxy.internal.company.com:9093"
+  max_connections: 2000
+
+  security:
+    # SSL protocol: TLS encryption with certificate-based auth (no SASL)
+    protocol: SSL
+    tls:
+      # Server certificate chain and private key
+      cert_path: "/etc/kafka-proxy/tls/server-cert-chain.pem"
+      key_path: "/etc/kafka-proxy/tls/server.key"
+
+      # CA certificate(s) for validating client certificates
+      ca_cert_path: "/etc/kafka-proxy/tls/client-ca-bundle.pem"
+
+      # Require clients to present valid certificates (mTLS)
+      require_client_cert: true
+
+      # Principal extraction from certificate DN
+      principal:
+        # Extract CN (Common Name) and convert to lowercase
+        # Multiple rules: first match wins, DEFAULT is fallback
+        #
+        # Examples:
+        #   "CN=Alice,OU=Eng,O=Corp" -> "alice"
+        #   "CN=Service-Account,OU=Platform" -> "service-account"
+        #   "O=Corp,CN=Bob" -> (no match) -> full DN
+        mapping_rules: "RULE:^CN=([^,]+).*$/$1/L,RULE:^.*CN=([^,]+).*$/$1/L,DEFAULT"
+
+kafka:
+  bootstrap_servers:
+    - "broker1.kafka.internal:9093"
+    - "broker2.kafka.internal:9093"
+    - "broker3.kafka.internal:9093"
+  connection_timeout_ms: 5000
+  request_timeout_ms: 30000
+  metadata_refresh_interval_secs: 30
+
+  # mTLS to brokers
+  security_protocol: SSL
+  tls:
+    # CA for verifying broker certificates
+    ca_cert_path: "/etc/kafka-proxy/tls/broker-ca.pem"
+    # Client certificate for authenticating proxy to brokers
+    cert_path: "/etc/kafka-proxy/tls/proxy-client.crt"
+    key_path: "/etc/kafka-proxy/tls/proxy-client.key"
+
+mapping:
+  # Conservative 10:1 compression for enterprise workloads
+  virtual_partitions: 100
+  physical_partitions: 10
+  offset_range: 1099511627776
+
+  topics:
+    # Payment processing: lower compression, higher throughput guarantee
+    "payments\\..*":
+      virtual_partitions: 100
+      physical_partitions: 25
+
+    # User activity streams: higher compression
+    "user-activity":
+      virtual_partitions: 500
+      physical_partitions: 50
+
+    # Compacted topics: no remapping
+    "configuration":
+      virtual_partitions: 3
+      physical_partitions: 3
+
+metrics:
+  enabled: true
+  address: "0.0.0.0:9090"
+
+logging:
+  level: "info"
+  json: true

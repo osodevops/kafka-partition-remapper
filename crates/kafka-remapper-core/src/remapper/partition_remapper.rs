@@ -19,6 +19,8 @@
 //! - Virtual partition 5 → Physical partition 5, group 0
 //! - Virtual partition 95 → Physical partition 5, group 9
 
+use std::collections::HashMap;
+
 use crate::config::MappingConfig;
 use crate::error::{RemapError, RemapResult};
 
@@ -257,6 +259,7 @@ mod tests {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 20, // 1M offsets per virtual partition
+            topics: HashMap::new(),
         }
     }
 
@@ -449,6 +452,7 @@ mod tests {
             virtual_partitions: 20,
             physical_partitions: 10,
             offset_range: 1 << 20,
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config_2_1);
 
@@ -464,6 +468,7 @@ mod tests {
             virtual_partitions: 1000,
             physical_partitions: 10,
             offset_range: 1 << 20,
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config_100_1);
 
@@ -512,6 +517,7 @@ mod tests {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config);
 
@@ -557,6 +563,7 @@ mod tests {
             virtual_partitions: 1000,
             physical_partitions: 100,
             offset_range: 1 << 20,
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config);
 
@@ -618,6 +625,7 @@ mod tests {
             virtual_partitions: 100,
             physical_partitions: 7,
             offset_range: 1 << 20,
+            topics: HashMap::new(),
         };
 
         let result = config.validate();
@@ -657,6 +665,7 @@ mod tests {
             virtual_partitions: 10,
             physical_partitions: 10,
             offset_range: 1 << 20,
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config);
 
@@ -680,6 +689,7 @@ mod tests {
             virtual_partitions: 10_000,
             physical_partitions: 100,
             offset_range: 1 << 20,
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config);
 
@@ -776,6 +786,7 @@ mod tests {
             virtual_partitions: 1000,
             physical_partitions: 100,
             offset_range: 1_000_000_000_000, // 1 trillion
+            topics: HashMap::new(),
         };
         let r = PartitionRemapper::new(&config);
 
@@ -820,6 +831,7 @@ mod proptests {
             virtual_partitions: physical * ratio,
             physical_partitions: physical,
             offset_range: 1 << 30, // 1B offsets per group
+            topics: HashMap::new(),
         })
     }
 

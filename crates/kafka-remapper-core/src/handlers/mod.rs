@@ -11,14 +11,18 @@ pub mod offset_commit;
 pub mod offset_fetch;
 pub mod passthrough;
 pub mod produce;
+pub mod sasl;
 
 pub use api_versions::ApiVersionsHandler;
 pub use fetch::FetchHandler;
 pub use metadata::MetadataHandler;
+#[allow(deprecated)]
 pub use offset_commit::OffsetCommitHandler;
+#[allow(deprecated)]
 pub use offset_fetch::OffsetFetchHandler;
 pub use passthrough::PassthroughHandler;
 pub use produce::ProduceHandler;
+pub use sasl::SaslHandler;
 
 use async_trait::async_trait;
 use bytes::BytesMut;

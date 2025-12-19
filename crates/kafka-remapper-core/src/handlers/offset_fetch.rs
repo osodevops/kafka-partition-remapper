@@ -1,5 +1,45 @@
 //! OffsetFetch request handler.
 //!
+//! # DEPRECATED - DO NOT USE
+//!
+//! **WARNING:** This handler is BROKEN and should NOT be wired into the connection handler.
+//!
+//! ## The Problem
+//!
+//! This handler translates virtual partition numbers to physical partition numbers in requests,
+//! and attempts to translate back in responses. However, this approach is fundamentally broken
+//! because multiple virtual partitions map to the same physical partition.
+//!
+//! When we request offsets for a physical partition, the broker returns the offset stored
+//! at that key - but we cannot know WHICH virtual partition that offset belongs to. The
+//! saved mapping only tells us which virtual partition we REQUESTED, not which one the
+//! stored offset actually came from.
+//!
+//! ## Example
+//!
+//! ```text
+//! With 100 virtual → 10 physical:
+//!
+//! 1. Consumer commits virtual partition 10, offset 200
+//!    → With translation: stored at (group, topic, partition=0)
+//!
+//! 2. Consumer fetches offset for virtual partition 0
+//!    → Translated to physical partition 0
+//!    → Broker returns offset 200 (from virtual partition 10!)
+//!    → Handler restores "virtual partition 0" from saved mapping
+//!    → Result: virtual partition 0 has offset 200 - WRONG!
+//! ```
+//!
+//! ## Correct Approach
+//!
+//! Use **passthrough** (in `connection.rs`). Store and retrieve offsets using virtual
+//! partition numbers directly. The broker accepts any partition number in `__consumer_offsets`.
+//!
+//! See `docs/implementation-plan.md` Appendix A for detailed analysis.
+//!
+//! ---
+//!
+//! Original description (for historical reference):
 //! Translates virtual partition indices to physical in the request,
 //! and physical offsets back to virtual in the response.
 
@@ -14,7 +54,7 @@ use tracing::debug;
 use crate::broker::BrokerPool;
 use crate::error::{ProxyError, Result};
 use crate::network::codec::KafkaFrame;
-use crate::remapper::PartitionRemapper;
+use crate::remapper::TopicRemapperRegistry;
 
 use super::ProtocolHandler;
 
@@ -27,19 +67,26 @@ struct PartitionMapping {
 
 /// Handler for OffsetFetch requests.
 ///
-/// Translates virtual partitions to physical in the request,
-/// and translates physical offsets back to virtual in the response.
+/// # Deprecated
+///
+/// **DO NOT USE** - This handler returns incorrect offsets due to partition key collisions.
+/// Use passthrough instead. See module-level documentation for details.
+#[deprecated(
+    since = "0.6.0",
+    note = "This handler is broken - cannot determine which virtual partition a stored offset belongs to when multiple map to the same physical partition. Use passthrough instead."
+)]
 pub struct OffsetFetchHandler {
-    remapper: Arc<PartitionRemapper>,
+    registry: Arc<TopicRemapperRegistry>,
     broker_pool: Arc<BrokerPool>,
 }
 
+#[allow(deprecated)]
 impl OffsetFetchHandler {
     /// Create a new OffsetFetch handler.
     #[must_use]
-    pub fn new(remapper: Arc<PartitionRemapper>, broker_pool: Arc<BrokerPool>) -> Self {
+    pub fn new(registry: Arc<TopicRemapperRegistry>, broker_pool: Arc<BrokerPool>) -> Self {
         Self {
-            remapper,
+            registry,
             broker_pool,
         }
     }
@@ -55,16 +102,16 @@ impl OffsetFetchHandler {
         if let Some(topics) = &mut request.topics {
             for topic in topics {
                 let topic_name = topic.name.to_string();
+                let remapper = self.registry.get_remapper(&topic_name);
                 let mut topic_mappings = Vec::new();
 
                 for partition in &mut topic.partition_indexes {
                     let virtual_partition = *partition;
 
                     // Translate to physical
-                    let physical = self
-                        .remapper
+                    let physical = remapper
                         .virtual_to_physical(virtual_partition)
-                        .map_err(|e| ProxyError::Remap(e))?;
+                        .map_err(ProxyError::Remap)?;
 
                     debug!(
                         virtual_partition,
@@ -95,6 +142,7 @@ impl OffsetFetchHandler {
     ) -> Result<()> {
         for topic in &mut response.topics {
             let topic_name = topic.name.to_string();
+            let remapper = self.registry.get_remapper(&topic_name);
 
             // Find the mappings for this topic
             if let Some((_, topic_mappings)) = mappings.iter().find(|(name, _)| name == &topic_name)
@@ -110,10 +158,9 @@ impl OffsetFetchHandler {
                     {
                         // Translate the offset back to virtual
                         if physical_offset >= 0 {
-                            let virtual_mapping = self
-                                .remapper
+                            let virtual_mapping = remapper
                                 .physical_to_virtual(physical_partition, physical_offset)
-                                .map_err(|e| ProxyError::Remap(e))?;
+                                .map_err(ProxyError::Remap)?;
 
                             debug!(
                                 physical_partition,
@@ -139,6 +186,7 @@ impl OffsetFetchHandler {
 }
 
 #[async_trait]
+#[allow(deprecated)]
 impl ProtocolHandler for OffsetFetchHandler {
     async fn handle(&self, frame: &KafkaFrame) -> Result<BytesMut> {
         debug!(
@@ -192,7 +240,10 @@ impl ProtocolHandler for OffsetFetchHandler {
 }
 
 #[cfg(test)]
+#[allow(deprecated)] // Tests kept for historical reference - handler is deprecated
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::config::{KafkaConfig, MappingConfig, SecurityProtocol};
     use kafka_protocol::messages::offset_fetch_request::OffsetFetchRequestTopic;
@@ -201,11 +252,12 @@ mod tests {
     };
     use kafka_protocol::protocol::StrBytes;
 
-    fn test_remapper() -> Arc<PartitionRemapper> {
-        Arc::new(PartitionRemapper::new(&MappingConfig {
+    fn test_registry() -> Arc<TopicRemapperRegistry> {
+        Arc::new(TopicRemapperRegistry::new(&MappingConfig {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: HashMap::new(),
         }))
     }
 
@@ -223,7 +275,7 @@ mod tests {
 
     #[test]
     fn test_translate_request() {
-        let handler = OffsetFetchHandler::new(test_remapper(), test_pool());
+        let handler = OffsetFetchHandler::new(test_registry(), test_pool());
 
         let mut request = OffsetFetchRequest::default();
         request.group_id =
@@ -251,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_translate_response() {
-        let handler = OffsetFetchHandler::new(test_remapper(), test_pool());
+        let handler = OffsetFetchHandler::new(test_registry(), test_pool());
 
         // Simulate mappings from a previous request
         let mappings = vec![(
@@ -296,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_translate_response_no_offset() {
-        let handler = OffsetFetchHandler::new(test_remapper(), test_pool());
+        let handler = OffsetFetchHandler::new(test_registry(), test_pool());
 
         let mappings = vec![(
             "test-topic".to_string(),

@@ -59,6 +59,9 @@ rustls-pki-types = "1.10"
 # Regex (for principal mapping and env var expansion)
 regex = "1.11"
 
+# X.509 certificate parsing (for principal extraction from mTLS)
+x509-parser = "0.16"
+
 [workspace.lints.rust]
 unsafe_code = "forbid"
 

@@ -32,6 +32,7 @@
 #![forbid(unsafe_code)]
 #![allow(dead_code, unused_variables, unused_imports, clippy::redundant_closure)]
 
+pub mod auth;
 pub mod broker;
 pub mod config;
 pub mod error;
@@ -48,7 +49,8 @@ pub mod tls;
 pub mod testing;
 
 // Re-export commonly used types
+pub use auth::{SaslAuthenticator, SaslServer, SaslSession, SaslStepResult};
 pub use broker::{BrokerConnection, BrokerPool, BrokerStream};
 pub use config::{BrokerSaslConfig, BrokerTlsConfig, ProxyConfig, SaslMechanism, SecurityProtocol};
 pub use error::{AuthError, ConfigError, ProxyError, RemapError, Result, TlsError};
-pub use tls::TlsConnector;
+pub use tls::{TlsConnector, TlsServerAcceptor};

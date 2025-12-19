@@ -18,9 +18,14 @@ use tokio::sync::Mutex;
 use tokio::time::timeout;
 use tracing::{debug, info, instrument, warn};
 
+use crate::auth::{ScramHash, ScramSha256, ScramSha512};
 use crate::config::{BrokerSaslConfig, BrokerTlsConfig, SaslMechanism, SecurityProtocol};
 use crate::error::{ProxyError, Result};
 use crate::tls::TlsConnector;
+
+use base64::engine::general_purpose::STANDARD as BASE64;
+use base64::Engine;
+use rand::Rng;
 
 use super::stream::BrokerStream;
 
@@ -237,6 +242,7 @@ impl BrokerConnection {
             SaslMechanism::Plain => "PLAIN",
             SaslMechanism::ScramSha256 => "SCRAM-SHA-256",
             SaslMechanism::ScramSha512 => "SCRAM-SHA-512",
+            SaslMechanism::OAuthBearer => "OAUTHBEARER",
         };
 
         debug!(mechanism = mechanism_name, "performing SASL authentication");
@@ -283,11 +289,21 @@ impl BrokerConnection {
                 self.authenticate_plain(&sasl_config.username, &sasl_config.password)
                     .await?;
             }
-            SaslMechanism::ScramSha256 | SaslMechanism::ScramSha512 => {
-                // SCRAM requires multiple round-trips, not yet implemented
+            SaslMechanism::ScramSha256 => {
+                self.authenticate_scram::<ScramSha256>(&sasl_config.username, &sasl_config.password)
+                    .await?;
+            }
+            SaslMechanism::ScramSha512 => {
+                self.authenticate_scram::<ScramSha512>(&sasl_config.username, &sasl_config.password)
+                    .await?;
+            }
+            SaslMechanism::OAuthBearer => {
+                // OAUTHBEARER for broker connections is not yet implemented.
+                // This is for client-to-proxy authentication, not proxy-to-broker.
                 return Err(ProxyError::BrokerUnavailable {
                     broker_id: self.broker_id,
-                    message: format!("SASL mechanism '{}' not yet implemented", mechanism_name),
+                    message: "OAUTHBEARER authentication to brokers is not yet implemented"
+                        .to_string(),
                 });
             }
         }
@@ -406,6 +422,236 @@ impl BrokerConnection {
 
         debug!("SASL/PLAIN authentication successful");
         Ok(())
+    }
+
+    /// Authenticate using SASL/SCRAM mechanism.
+    ///
+    /// SCRAM authentication requires multiple round-trips:
+    /// 1. client-first-message → server-first-message
+    /// 2. client-final-message → server-final-message
+    async fn authenticate_scram<H: ScramHash>(&self, username: &str, password: &str) -> Result<()> {
+        let mechanism_name = H::name();
+        debug!(mechanism = mechanism_name, "starting SCRAM authentication");
+
+        // Generate client nonce (24 bytes of random data, base64 encoded)
+        let client_nonce: String = {
+            let random_bytes: [u8; 24] = rand::thread_rng().gen();
+            BASE64.encode(random_bytes)
+        };
+
+        // Step 1: Send client-first-message
+        // Format: n,,n=<username>,r=<client-nonce>
+        // Note: "n,," is GS2 header (no channel binding, no authzid)
+        let client_first_message_bare = format!("n={},r={}", username, client_nonce);
+        let client_first_message = format!("n,,{}", client_first_message_bare);
+
+        debug!(client_first = %client_first_message, "sending client-first-message");
+
+        let server_first_response = self
+            .send_sasl_authenticate(client_first_message.as_bytes())
+            .await?;
+
+        // Check for errors
+        if server_first_response.error_code != 0 {
+            let error_message = server_first_response
+                .error_message
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "unknown error".to_string());
+            return Err(ProxyError::BrokerUnavailable {
+                broker_id: self.broker_id,
+                message: format!(
+                    "SCRAM client-first failed (error code {}): {}",
+                    server_first_response.error_code, error_message
+                ),
+            });
+        }
+
+        // Parse server-first-message from response
+        let server_first_message =
+            String::from_utf8(server_first_response.auth_bytes.to_vec()).map_err(|_| {
+                ProxyError::BrokerUnavailable {
+                    broker_id: self.broker_id,
+                    message: "Invalid UTF-8 in server-first-message".to_string(),
+                }
+            })?;
+
+        debug!(server_first = %server_first_message, "received server-first-message");
+
+        // Parse server-first-message: r=<combined-nonce>,s=<salt>,i=<iterations>
+        let (combined_nonce, salt, iterations) =
+            Self::parse_server_first_message(&server_first_message).map_err(|e| {
+                ProxyError::BrokerUnavailable {
+                    broker_id: self.broker_id,
+                    message: format!("Failed to parse server-first-message: {}", e),
+                }
+            })?;
+
+        // Verify combined nonce starts with our client nonce
+        if !combined_nonce.starts_with(&client_nonce) {
+            return Err(ProxyError::BrokerUnavailable {
+                broker_id: self.broker_id,
+                message: "Server nonce does not start with client nonce".to_string(),
+            });
+        }
+
+        // Step 2: Compute client proof
+        // SaltedPassword = PBKDF2(password, salt, iterations)
+        let salted_password = H::pbkdf2(password.as_bytes(), &salt, iterations);
+
+        // ClientKey = HMAC(SaltedPassword, "Client Key")
+        let client_key = H::hmac(&salted_password, b"Client Key");
+
+        // StoredKey = H(ClientKey)
+        let stored_key = H::hash(&client_key);
+
+        // ServerKey = HMAC(SaltedPassword, "Server Key")
+        let server_key = H::hmac(&salted_password, b"Server Key");
+
+        // Build client-final-message-without-proof
+        // c=biws is base64("n,,") - the GS2 header
+        let client_final_without_proof = format!("c=biws,r={}", combined_nonce);
+
+        // AuthMessage = client-first-message-bare + "," + server-first-message + "," + client-final-without-proof
+        let auth_message = format!(
+            "{},{},{}",
+            client_first_message_bare, server_first_message, client_final_without_proof
+        );
+
+        // ClientSignature = HMAC(StoredKey, AuthMessage)
+        let client_signature = H::hmac(&stored_key, auth_message.as_bytes());
+
+        // ClientProof = ClientKey XOR ClientSignature
+        let client_proof: Vec<u8> = client_key
+            .iter()
+            .zip(client_signature.iter())
+            .map(|(a, b)| a ^ b)
+            .collect();
+
+        // Build client-final-message
+        let client_final_message = format!("{},p={}", client_final_without_proof, BASE64.encode(&client_proof));
+
+        debug!("sending client-final-message");
+
+        let server_final_response = self
+            .send_sasl_authenticate(client_final_message.as_bytes())
+            .await?;
+
+        // Check for errors
+        if server_final_response.error_code != 0 {
+            let error_message = server_final_response
+                .error_message
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "authentication failed".to_string());
+            return Err(ProxyError::BrokerUnavailable {
+                broker_id: self.broker_id,
+                message: format!(
+                    "SCRAM authentication failed (error code {}): {}",
+                    server_final_response.error_code, error_message
+                ),
+            });
+        }
+
+        // Parse and verify server-final-message
+        let server_final_message =
+            String::from_utf8(server_final_response.auth_bytes.to_vec()).map_err(|_| {
+                ProxyError::BrokerUnavailable {
+                    broker_id: self.broker_id,
+                    message: "Invalid UTF-8 in server-final-message".to_string(),
+                }
+            })?;
+
+        debug!(server_final = %server_final_message, "received server-final-message");
+
+        // Verify server signature
+        // ServerSignature = HMAC(ServerKey, AuthMessage)
+        let expected_server_signature = H::hmac(&server_key, auth_message.as_bytes());
+        let expected_verifier = format!("v={}", BASE64.encode(&expected_server_signature));
+
+        if server_final_message != expected_verifier {
+            return Err(ProxyError::BrokerUnavailable {
+                broker_id: self.broker_id,
+                message: "Server signature verification failed".to_string(),
+            });
+        }
+
+        debug!(mechanism = mechanism_name, "SCRAM authentication successful");
+        Ok(())
+    }
+
+    /// Parse server-first-message to extract combined nonce, salt, and iterations.
+    fn parse_server_first_message(message: &str) -> std::result::Result<(String, Vec<u8>, u32), String> {
+        let mut combined_nonce = None;
+        let mut salt = None;
+        let mut iterations = None;
+
+        for part in message.split(',') {
+            if let Some(value) = part.strip_prefix("r=") {
+                combined_nonce = Some(value.to_string());
+            } else if let Some(value) = part.strip_prefix("s=") {
+                salt = Some(
+                    BASE64
+                        .decode(value)
+                        .map_err(|e| format!("Invalid base64 salt: {}", e))?,
+                );
+            } else if let Some(value) = part.strip_prefix("i=") {
+                iterations = Some(
+                    value
+                        .parse::<u32>()
+                        .map_err(|e| format!("Invalid iteration count: {}", e))?,
+                );
+            }
+        }
+
+        Ok((
+            combined_nonce.ok_or("Missing nonce (r=)")?,
+            salt.ok_or("Missing salt (s=)")?,
+            iterations.ok_or("Missing iterations (i=)")?,
+        ))
+    }
+
+    /// Send a SaslAuthenticate request and receive the response.
+    async fn send_sasl_authenticate(&self, auth_bytes: &[u8]) -> Result<SaslAuthenticateResponse> {
+        let correlation_id = self.next_correlation_id();
+        let api_version = 2i16;
+        let header_version = SaslAuthenticateRequest::header_version(api_version);
+
+        // Build the request header
+        let mut header = RequestHeader::default();
+        header.request_api_key = ApiKey::SaslAuthenticate as i16;
+        header.request_api_version = api_version;
+        header.correlation_id = correlation_id;
+        header.client_id = Some(StrBytes::from_static_str("kafka-remapper-proxy"));
+
+        // Build the request body
+        let mut request = SaslAuthenticateRequest::default();
+        request.auth_bytes = Bytes::copy_from_slice(auth_bytes);
+
+        // Encode the request
+        let mut buf = BytesMut::new();
+        header
+            .encode(&mut buf, header_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
+                message: format!("failed to encode SASL authenticate header: {e}"),
+            })?;
+        request
+            .encode(&mut buf, api_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
+                message: format!("failed to encode SASL authenticate request: {e}"),
+            })?;
+
+        // Send the request and receive response
+        let response_bytes = self.send_raw_bytes(&buf).await?;
+
+        // Skip correlation ID (first 4 bytes) and decode response
+        let mut response_data = Bytes::copy_from_slice(&response_bytes[4..]);
+        let response =
+            SaslAuthenticateResponse::decode(&mut response_data, api_version).map_err(|e| {
+                ProxyError::ProtocolDecode {
+                    message: format!("failed to decode SASL authenticate response: {e}"),
+                }
+            })?;
+
+        Ok(response)
     }
 
     /// Send raw bytes to the broker and receive the response.
@@ -629,5 +875,231 @@ mod tests {
 
         let result = conn.connect().await;
         assert!(result.is_err());
+    }
+
+    // ============================================================================
+    // SCRAM Client Tests
+    // ============================================================================
+
+    #[test]
+    fn test_parse_server_first_message_valid() {
+        // Standard server-first-message format
+        let message = "r=clientnonce123servernonce456,s=c2FsdDEyMzQ1Njc4OTAxMjM0NTY=,i=4096";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_ok());
+
+        let (nonce, salt, iterations) = result.unwrap();
+        assert_eq!(nonce, "clientnonce123servernonce456");
+        assert_eq!(iterations, 4096);
+        assert!(!salt.is_empty());
+    }
+
+    #[test]
+    fn test_parse_server_first_message_high_iterations() {
+        let message = "r=nonce,s=c2FsdA==,i=100000";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_ok());
+
+        let (_, _, iterations) = result.unwrap();
+        assert_eq!(iterations, 100000);
+    }
+
+    #[test]
+    fn test_parse_server_first_message_missing_nonce() {
+        let message = "s=c2FsdA==,i=4096";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("nonce"));
+    }
+
+    #[test]
+    fn test_parse_server_first_message_missing_salt() {
+        let message = "r=nonce,i=4096";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("salt"));
+    }
+
+    #[test]
+    fn test_parse_server_first_message_missing_iterations() {
+        let message = "r=nonce,s=c2FsdA==";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("iteration"));
+    }
+
+    #[test]
+    fn test_parse_server_first_message_invalid_salt_encoding() {
+        let message = "r=nonce,s=!!!invalid-base64!!!,i=4096";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("salt"));
+    }
+
+    #[test]
+    fn test_parse_server_first_message_invalid_iterations() {
+        let message = "r=nonce,s=c2FsdA==,i=notanumber";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("iteration"));
+    }
+
+    #[test]
+    fn test_parse_server_first_message_with_extensions() {
+        // Server might include extensions - we should parse successfully
+        let message = "r=nonce,s=c2FsdA==,i=4096,e=extension";
+        let result = BrokerConnection::parse_server_first_message(message);
+        assert!(result.is_ok());
+
+        let (nonce, _, iterations) = result.unwrap();
+        assert_eq!(nonce, "nonce");
+        assert_eq!(iterations, 4096);
+    }
+
+    #[test]
+    fn test_scram_client_nonce_generation() {
+        // Test that client nonce generation produces valid base64
+        let random_bytes: [u8; 24] = rand::thread_rng().gen();
+        let client_nonce = BASE64.encode(random_bytes);
+
+        // Should be valid base64
+        assert!(BASE64.decode(&client_nonce).is_ok());
+        // Should be 32 chars (24 bytes -> 32 base64 chars)
+        assert_eq!(client_nonce.len(), 32);
+    }
+
+    #[test]
+    fn test_scram_client_first_message_format() {
+        let username = "testuser";
+        let client_nonce = "abc123xyz789";
+
+        let client_first_bare = format!("n={},r={}", username, client_nonce);
+        let client_first = format!("n,,{}", client_first_bare);
+
+        assert_eq!(client_first, "n,,n=testuser,r=abc123xyz789");
+        assert_eq!(client_first_bare, "n=testuser,r=abc123xyz789");
+    }
+
+    #[test]
+    fn test_scram_client_final_message_format() {
+        let combined_nonce = "clientnonce123servernonce456";
+        let proof = BASE64.encode(b"fake_proof_data");
+
+        let client_final_without_proof = format!("c=biws,r={}", combined_nonce);
+        let client_final = format!("{},p={}", client_final_without_proof, proof);
+
+        assert!(client_final.starts_with("c=biws,r="));
+        assert!(client_final.contains(",p="));
+    }
+
+    #[test]
+    fn test_scram_channel_binding_biws() {
+        // "biws" is base64("n,,") - the GS2 header indicating no channel binding
+        let biws = BASE64.encode(b"n,,");
+        assert_eq!(biws, "biws");
+    }
+
+    #[test]
+    fn test_scram_auth_message_format() {
+        let client_first_bare = "n=user,r=clientnonce";
+        let server_first = "r=clientnonceservernonce,s=c2FsdA==,i=4096";
+        let client_final_without_proof = "c=biws,r=clientnonceservernonce";
+
+        let auth_message = format!(
+            "{},{},{}",
+            client_first_bare, server_first, client_final_without_proof
+        );
+
+        // Verify format matches expected pattern
+        assert!(auth_message.starts_with("n=user,r="));
+        assert!(auth_message.contains(",s="));
+        assert!(auth_message.contains(",i="));
+        assert!(auth_message.ends_with("c=biws,r=clientnonceservernonce"));
+    }
+
+    #[test]
+    fn test_scram_nonce_verification() {
+        let client_nonce = "clientnonce123";
+        let combined_nonce = "clientnonce123servernonce456";
+
+        // Combined nonce should start with client nonce
+        assert!(combined_nonce.starts_with(client_nonce));
+
+        // This would fail verification
+        let wrong_combined_nonce = "wrongclientnonceservernonce";
+        assert!(!wrong_combined_nonce.starts_with(client_nonce));
+    }
+
+    #[test]
+    fn test_scram_server_signature_format() {
+        // Server-final-message should be "v=" followed by base64 signature
+        let signature = BASE64.encode(b"server_signature_bytes");
+        let server_final = format!("v={}", signature);
+
+        assert!(server_final.starts_with("v="));
+        let sig_part = server_final.strip_prefix("v=").unwrap();
+        assert!(BASE64.decode(sig_part).is_ok());
+    }
+
+    // Test SCRAM cryptographic operations using the shared ScramHash trait
+    #[test]
+    fn test_scram_client_proof_computation() {
+        let password = b"password";
+        let salt = b"salt12345678901234567890";
+        let iterations = 4096u32;
+
+        // Compute using ScramSha256
+        let salted_password = ScramSha256::pbkdf2(password, salt, iterations);
+        let client_key = ScramSha256::hmac(&salted_password, b"Client Key");
+        let stored_key = ScramSha256::hash(&client_key);
+        let server_key = ScramSha256::hmac(&salted_password, b"Server Key");
+
+        // Verify lengths
+        assert_eq!(salted_password.len(), 32);
+        assert_eq!(client_key.len(), 32);
+        assert_eq!(stored_key.len(), 32);
+        assert_eq!(server_key.len(), 32);
+
+        // Test XOR recovery
+        let auth_message = b"test_auth_message";
+        let client_signature = ScramSha256::hmac(&stored_key, auth_message);
+
+        let client_proof: Vec<u8> = client_key
+            .iter()
+            .zip(client_signature.iter())
+            .map(|(a, b)| a ^ b)
+            .collect();
+
+        // Recover client key from proof
+        let recovered_client_key: Vec<u8> = client_proof
+            .iter()
+            .zip(client_signature.iter())
+            .map(|(a, b)| a ^ b)
+            .collect();
+
+        assert_eq!(recovered_client_key, client_key);
+
+        // Verify H(recovered_key) = stored_key
+        let recovered_stored_key = ScramSha256::hash(&recovered_client_key);
+        assert_eq!(recovered_stored_key, stored_key);
+    }
+
+    #[test]
+    fn test_scram_sha512_proof_computation() {
+        let password = b"password";
+        let salt = b"salt12345678901234567890";
+        let iterations = 4096u32;
+
+        // Compute using ScramSha512
+        let salted_password = ScramSha512::pbkdf2(password, salt, iterations);
+        let client_key = ScramSha512::hmac(&salted_password, b"Client Key");
+        let stored_key = ScramSha512::hash(&client_key);
+        let server_key = ScramSha512::hmac(&salted_password, b"Server Key");
+
+        // Verify lengths are 64 bytes for SHA-512
+        assert_eq!(salted_password.len(), 64);
+        assert_eq!(client_key.len(), 64);
+        assert_eq!(stored_key.len(), 64);
+        assert_eq!(server_key.len(), 64);
     }
 }

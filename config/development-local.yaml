@@ -1,0 +1,90 @@
+# Kafka Partition Remapping Proxy - Local Development Configuration
+#
+# This configuration is designed for local development and testing:
+# - Plaintext connections (no TLS/SASL overhead)
+# - Works with local Kafka or Docker Compose
+# - Verbose logging for debugging
+# - Small partition counts for easy testing
+#
+# Prerequisites:
+#   - Local Kafka broker running on localhost:9092 or localhost:29092
+#   - OR use with docker-compose:
+#       cd docker && docker compose up -d
+#
+# Usage:
+#   cargo run -- --config config/development-local.yaml
+#
+# Testing:
+#   # Produce through proxy
+#   kafka-console-producer --bootstrap-server localhost:19092 --topic test-topic
+#
+#   # Consume through proxy
+#   kafka-console-consumer --bootstrap-server localhost:19092 --topic test-topic --from-beginning
+
+listen:
+  # Local development port (different from Kafka's 9092)
+  address: "127.0.0.1:19092"
+  # For local dev, advertised address matches listen address
+  advertised_address: "localhost:19092"
+  # Lower limit for development
+  max_connections: 100
+
+  # No security for local development
+  # WARNING: Never use PLAINTEXT in production!
+  # security: null  # Implicitly PLAINTEXT
+
+kafka:
+  bootstrap_servers:
+    # Option 1: Local Kafka
+    # - "localhost:9092"
+
+    # Option 2: Docker Compose Kafka (default)
+    - "localhost:29092"
+
+    # Option 3: Redpanda
+    # - "localhost:19093"
+
+  connection_timeout_ms: 5000
+  request_timeout_ms: 10000
+  # Disable background refresh for simpler debugging
+  metadata_refresh_interval_secs: 0
+
+  # No security for local broker
+  security_protocol: PLAINTEXT
+
+mapping:
+  # Small numbers for easy mental math during testing
+  # 10:1 compression: 100 virtual -> 10 physical
+  virtual_partitions: 100
+  physical_partitions: 10
+  # Default offset range
+  offset_range: 1099511627776
+
+  # Per-topic overrides for testing different scenarios
+  topics:
+    # Test topic with 1:1 mapping (no remapping)
+    "no-remap":
+      virtual_partitions: 5
+      physical_partitions: 5
+
+    # Test topic with extreme compression
+    "high-compression":
+      virtual_partitions: 1000
+      physical_partitions: 10
+
+    # Test topic with small offset range (for offset overflow testing)
+    "small-offset-range":
+      virtual_partitions: 20
+      physical_partitions: 2
+      offset_range: 1048576  # 2^20 (minimum allowed)
+
+metrics:
+  enabled: true
+  # Metrics on different port to avoid conflicts
+  address: "127.0.0.1:19090"
+
+logging:
+  # Verbose logging for development
+  level: "debug"
+  # Human-readable format (not JSON)
+  json: false

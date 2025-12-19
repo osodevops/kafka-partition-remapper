@@ -1,0 +1,105 @@
+# Kafka Partition Remapping Proxy - Internal SASL/SCRAM Configuration
+#
+# This configuration is designed for internal/private network deployments where:
+# - TLS encrypts traffic on internal network
+# - SCRAM-SHA-512 provides strong authentication
+# - Credentials managed via external secrets file
+#
+# Ideal for:
+# - Kubernetes deployments within private VPC
+# - On-premises Kafka clusters
+# - AWS MSK with SASL/SCRAM
+
+listen:
+  address: "0.0.0.0:9092"
+  # For Kubernetes: use service DNS name
+  advertised_address: "kafka-proxy.kafka-system.svc.cluster.local:9092"
+  max_connections: 3000
+
+  security:
+    protocol: SASL_SSL
+    tls:
+      # Internal PKI certificates
+      cert_path: "/etc/kafka-proxy/tls/server.crt"
+      key_path: "/etc/kafka-proxy/tls/server.key"
+      # Internal CA for clients (optional, enables mTLS)
+      # ca_cert_path: "/etc/kafka-proxy/tls/internal-ca.crt"
+      # require_client_cert: false
+
+    sasl:
+      # SCRAM-SHA-512 is the strongest SCRAM variant
+      enabled_mechanisms:
+        - SCRAM-SHA-512
+        - SCRAM-SHA-256
+        # PLAIN allowed for legacy clients (use only with TLS)
+        - PLAIN
+
+      credentials:
+        # Kubernetes secret mounted as file
+        file: "/etc/kafka-proxy/secrets/sasl-credentials.yaml"
+
+        # Inline credentials format (for reference):
+        # users:
+        #   admin:
+        #     password: "admin-secret-password"
+        #     # For SCRAM, can optionally provide pre-computed credentials:
+        #     # scram_sha_512:
+        #     #   salt: "base64-encoded-salt"
+        #     #   stored_key: "base64-encoded-stored-key"
+        #     #   server_key: "base64-encoded-server-key"
+        #     #   iterations: 4096
+        #   app-producer:
+        #     password: "${PRODUCER_PASSWORD}"
+        #   app-consumer:
+        #     password: "${CONSUMER_PASSWORD}"
+
+kafka:
+  bootstrap_servers:
+    - "kafka-0.kafka-headless.kafka-system.svc.cluster.local:9093"
+    - "kafka-1.kafka-headless.kafka-system.svc.cluster.local:9093"
+    - "kafka-2.kafka-headless.kafka-system.svc.cluster.local:9093"
+  connection_timeout_ms: 5000
+  request_timeout_ms: 30000
+  # More frequent refresh for dynamic Kubernetes environments
+  metadata_refresh_interval_secs: 15
+
+  security_protocol: SASL_SSL
+  tls:
+    # Internal CA certificate
+    ca_cert_path: "/etc/kafka-proxy/tls/kafka-ca.crt"
+  sasl:
+    mechanism: SCRAM-SHA-512
+    # Proxy service account credentials
+    username: "kafka-proxy-service"
+    password: "${KAFKA_PROXY_PASSWORD}"
+
+mapping:
+  virtual_partitions: 500
+  physical_partitions: 50
+  offset_range: 1099511627776
+
+  topics:
+    # Order processing: moderate compression
+    "orders\\..*":
+      virtual_partitions: 200
+      physical_partitions: 20
+
+    # Notifications: high fan-out, higher virtual partitions
+    "notifications":
+      virtual_partitions: 1000
+      physical_partitions: 50
+
+    # Dead letter queues: minimal partitions
+    ".*\\.dlq":
+      virtual_partitions: 10
+      physical_partitions: 5
+
+metrics:
+  enabled: true
+  # Metrics endpoint for Prometheus scraping
+  address: "0.0.0.0:9090"
+
+logging:
+  level: "info"
+  # JSON logging for log aggregation (ELK, Loki, etc.)
+  json: true

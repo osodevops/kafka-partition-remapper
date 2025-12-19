@@ -10,6 +10,8 @@ description = "Core library for Kafka partition remapping proxy"
 default = []
 # Enable test utilities (ProxyTestHarness, MockBroker)
 testing = []
+# Enable JWT token validation for OAUTHBEARER (requires jsonwebtoken crate)
+oauthbearer-jwt = []
 
 [dependencies]
 # Async
@@ -45,13 +47,25 @@ rustls-pemfile = { workspace = true }
 webpki-roots = { workspace = true }
 rustls-pki-types = { workspace = true }
 
-# Regex (for env var expansion in config)
+# Regex (for env var expansion in config and principal mapping)
 regex = { workspace = true }
+
+# X.509 certificate parsing (for principal extraction from mTLS)
+x509-parser = { workspace = true }
+
+# SCRAM authentication
+sha2 = "0.10"
+hmac = "0.12"
+base64 = "0.22"
+pbkdf2 = "0.12"
+rand = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
 tempfile = "3.14"
 proptest = "1.5"
+# Self-dependency for integration tests to access testing module
+kafka-remapper-core = { path = ".", features = ["testing"] }
 # E2E testing with real Kafka (requires Docker)
 testcontainers = "0.23"
 testcontainers-modules = { version = "0.11", features = ["kafka"] }

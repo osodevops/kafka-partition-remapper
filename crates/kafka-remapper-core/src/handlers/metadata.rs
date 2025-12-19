@@ -19,13 +19,13 @@ use crate::broker::BrokerPool;
 use crate::config::ListenConfig;
 use crate::error::{ProxyError, Result};
 use crate::network::codec::KafkaFrame;
-use crate::remapper::PartitionRemapper;
+use crate::remapper::TopicRemapperRegistry;
 
 use super::ProtocolHandler;
 
 /// Handler for Metadata requests.
 pub struct MetadataHandler {
-    remapper: Arc<PartitionRemapper>,
+    registry: Arc<TopicRemapperRegistry>,
     broker_pool: Arc<BrokerPool>,
     /// Advertised host for broker address rewriting.
     advertised_host: String,
@@ -38,7 +38,7 @@ impl MetadataHandler {
     ///
     /// # Arguments
     ///
-    /// * `remapper` - Partition remapping logic
+    /// * `registry` - Topic-aware partition remapper registry
     /// * `broker_pool` - Pool of broker connections
     /// * `listen_config` - Listen configuration with advertised address
     ///
@@ -47,7 +47,7 @@ impl MetadataHandler {
     /// Panics if the advertised address cannot be parsed.
     #[must_use]
     pub fn new(
-        remapper: Arc<PartitionRemapper>,
+        registry: Arc<TopicRemapperRegistry>,
         broker_pool: Arc<BrokerPool>,
         listen_config: &ListenConfig,
     ) -> Self {
@@ -56,7 +56,7 @@ impl MetadataHandler {
             .expect("advertised address must be valid");
 
         Self {
-            remapper,
+            registry,
             broker_pool,
             advertised_host: host,
             advertised_port: port,
@@ -98,15 +98,17 @@ impl MetadataHandler {
     /// virtual partitions that map to it.
     fn virtualize_response(&self, mut response: MetadataResponse) -> MetadataResponse {
         for topic in &mut response.topics {
+            let topic_name = topic.name.as_ref().map(|n| n.to_string()).unwrap_or_default();
+            let remapper = self.registry.get_remapper(&topic_name);
             let original_partitions = std::mem::take(&mut topic.partitions);
             let mut virtual_partitions = Vec::new();
 
             // For each virtual partition, find its physical partition and copy metadata
-            for v_idx in 0..self.remapper.virtual_partitions() {
+            for v_idx in 0..remapper.virtual_partitions() {
                 let v_idx_i32 = v_idx as i32;
 
                 // Map virtual to physical
-                if let Ok(mapping) = self.remapper.virtual_to_physical(v_idx_i32) {
+                if let Ok(mapping) = remapper.virtual_to_physical(v_idx_i32) {
                     // Find the physical partition's metadata
                     if let Some(physical) = original_partitions
                         .iter()
@@ -170,7 +172,6 @@ impl ProtocolHandler for MetadataHandler {
 
         debug!(
             topics = virtualized.topics.len(),
-            virtual_partitions = self.remapper.virtual_partitions(),
             "virtualized metadata response"
         );
 
@@ -188,6 +189,8 @@ impl ProtocolHandler for MetadataHandler {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::config::{KafkaConfig, ListenConfig, MappingConfig, SecurityProtocol};
     use kafka_protocol::messages::metadata_response::{
@@ -196,11 +199,12 @@ mod tests {
     use kafka_protocol::messages::BrokerId;
     use kafka_protocol::protocol::StrBytes;
 
-    fn test_remapper() -> Arc<PartitionRemapper> {
-        Arc::new(PartitionRemapper::new(&MappingConfig {
+    fn test_registry() -> Arc<TopicRemapperRegistry> {
+        Arc::new(TopicRemapperRegistry::new(&MappingConfig {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: HashMap::new(),
         }))
     }
 
@@ -221,12 +225,13 @@ mod tests {
             address: "0.0.0.0:9092".to_string(),
             advertised_address: Some("proxy.example.com:9092".to_string()),
             max_connections: 1000,
+            security: None,
         }
     }
 
     #[test]
     fn test_virtualize_response() {
-        let handler = MetadataHandler::new(test_remapper(), test_pool(), &test_listen_config());
+        let handler = MetadataHandler::new(test_registry(), test_pool(), &test_listen_config());
 
         // Create a response with 10 physical partitions
         let mut response = MetadataResponse::default();
@@ -267,7 +272,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_broker_addresses() {
-        let handler = MetadataHandler::new(test_remapper(), test_pool(), &test_listen_config());
+        let handler = MetadataHandler::new(test_registry(), test_pool(), &test_listen_config());
 
         // Create a response with real broker addresses
         let mut response = MetadataResponse::default();
@@ -298,7 +303,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_preserves_broker_ids() {
-        let handler = MetadataHandler::new(test_remapper(), test_pool(), &test_listen_config());
+        let handler = MetadataHandler::new(test_registry(), test_pool(), &test_listen_config());
 
         let mut response = MetadataResponse::default();
 
@@ -321,6 +326,7 @@ mod tests {
             address: "0.0.0.0:9092".to_string(),
             advertised_address: None,
             max_connections: 1000,
+            security: None,
         };
 
         let (host, port) = config.parse_advertised_address().unwrap();
@@ -334,6 +340,7 @@ mod tests {
             address: "0.0.0.0:9092".to_string(),
             advertised_address: Some("kafka-proxy.prod:19092".to_string()),
             max_connections: 1000,
+            security: None,
         };
 
         let (host, port) = config.parse_advertised_address().unwrap();

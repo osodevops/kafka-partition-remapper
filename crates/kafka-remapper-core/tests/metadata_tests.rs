@@ -12,7 +12,7 @@ use kafka_remapper_core::testing::{api_keys, ProxyTestHarness, TestHarnessBuilde
 #[allow(dead_code)]
 fn create_metadata_handler(harness: &ProxyTestHarness) -> MetadataHandler {
     MetadataHandler::new(
-        harness.remapper.clone(),
+        harness.registry.clone(),
         harness.broker_pool.clone(),
         &harness.config.listen,
     )

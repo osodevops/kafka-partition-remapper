@@ -5,13 +5,14 @@
 //! - Partition remapper
 //! - Helper methods for sending requests and verifying responses
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use bytes::Bytes;
 
 use crate::broker::BrokerPool;
 use crate::config::{KafkaConfig, ListenConfig, MappingConfig, ProxyConfig, SecurityProtocol};
-use crate::remapper::PartitionRemapper;
+use crate::remapper::{PartitionRemapper, TopicRemapperRegistry};
 
 use super::mock_broker::{BrokerCall, MockBroker, ResponseGenerator};
 
@@ -21,8 +22,10 @@ pub struct ProxyTestHarness {
     mock_broker: MockBroker,
     /// The mock broker address
     mock_broker_addr: String,
-    /// The partition remapper
+    /// The partition remapper (default remapper for convenience)
     pub remapper: Arc<PartitionRemapper>,
+    /// The topic remapper registry (for per-topic mapping)
+    pub registry: Arc<TopicRemapperRegistry>,
     /// The broker pool (connected to mock broker)
     pub broker_pool: Arc<BrokerPool>,
     /// Test configuration
@@ -52,6 +55,7 @@ impl ProxyTestHarness {
                 address: "127.0.0.1:0".to_string(),
                 advertised_address: Some("localhost:19092".to_string()),
                 max_connections: 100,
+                security: None,
             },
             kafka: KafkaConfig {
                 bootstrap_servers: vec![mock_broker_addr.clone()],
@@ -66,6 +70,7 @@ impl ProxyTestHarness {
                 virtual_partitions,
                 physical_partitions,
                 offset_range: 1 << 40, // 1 trillion
+                topics: HashMap::new(),
             },
             metrics: Default::default(),
             logging: Default::default(),
@@ -73,8 +78,9 @@ impl ProxyTestHarness {
 
         let config = Arc::new(config);
 
-        // Create remapper
-        let remapper = Arc::new(PartitionRemapper::new(&config.mapping));
+        // Create remapper and registry
+        let registry = Arc::new(TopicRemapperRegistry::new(&config.mapping));
+        let remapper = Arc::clone(registry.default_remapper());
 
         // Create broker pool
         let broker_pool = Arc::new(BrokerPool::new(config.kafka.clone()));
@@ -83,6 +89,7 @@ impl ProxyTestHarness {
             mock_broker,
             mock_broker_addr,
             remapper,
+            registry,
             broker_pool,
             config,
         }
@@ -179,14 +186,16 @@ impl TestHarnessBuilder {
         let mut harness =
             ProxyTestHarness::with_config(self.virtual_partitions, self.physical_partitions).await;
 
-        // If custom offset range, recreate remapper
+        // If custom offset range, recreate remapper and registry
         if self.offset_range != (1 << 40) {
             let config = MappingConfig {
                 virtual_partitions: self.virtual_partitions,
                 physical_partitions: self.physical_partitions,
                 offset_range: self.offset_range,
+                topics: HashMap::new(),
             };
-            harness.remapper = Arc::new(PartitionRemapper::new(&config));
+            harness.registry = Arc::new(TopicRemapperRegistry::new(&config));
+            harness.remapper = Arc::clone(harness.registry.default_remapper());
         }
 
         harness

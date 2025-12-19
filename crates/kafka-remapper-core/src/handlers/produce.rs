@@ -15,22 +15,22 @@ use tracing::debug;
 use crate::broker::BrokerPool;
 use crate::error::{ProxyError, Result};
 use crate::network::codec::KafkaFrame;
-use crate::remapper::PartitionRemapper;
+use crate::remapper::TopicRemapperRegistry;
 
 use super::ProtocolHandler;
 
 /// Handler for Produce requests.
 pub struct ProduceHandler {
-    remapper: Arc<PartitionRemapper>,
+    registry: Arc<TopicRemapperRegistry>,
     broker_pool: Arc<BrokerPool>,
 }
 
 impl ProduceHandler {
     /// Create a new Produce handler.
     #[must_use]
-    pub fn new(remapper: Arc<PartitionRemapper>, broker_pool: Arc<BrokerPool>) -> Self {
+    pub fn new(registry: Arc<TopicRemapperRegistry>, broker_pool: Arc<BrokerPool>) -> Self {
         Self {
-            remapper,
+            registry,
             broker_pool,
         }
     }
@@ -46,15 +46,15 @@ impl ProduceHandler {
 
         for topic_data in &mut request.topic_data {
             let topic_name = topic_data.name.to_string();
+            let remapper = self.registry.get_remapper(&topic_name);
 
             for partition_data in &mut topic_data.partition_data {
                 let virtual_partition = partition_data.index;
 
                 // Map virtual to physical
-                let physical = self
-                    .remapper
+                let physical = remapper
                     .virtual_to_physical(virtual_partition)
-                    .map_err(|e| ProxyError::Remap(e))?;
+                    .map_err(ProxyError::Remap)?;
 
                 debug!(
                     topic = %topic_name,
@@ -85,6 +85,7 @@ impl ProduceHandler {
     ) -> Result<ProduceResponse> {
         for topic_response in &mut response.responses {
             let topic_name = topic_response.name.to_string();
+            let remapper = self.registry.get_remapper(&topic_name);
             let original_partitions = std::mem::take(&mut topic_response.partition_responses);
             let mut virtual_responses = Vec::new();
 
@@ -100,9 +101,8 @@ impl ProduceHandler {
 
                     // Translate base offset back to virtual
                     if virtual_response.base_offset >= 0 {
-                        if let Ok(virtual_mapping) = self
-                            .remapper
-                            .physical_to_virtual(physical_partition, virtual_response.base_offset)
+                        if let Ok(virtual_mapping) =
+                            remapper.physical_to_virtual(physical_partition, virtual_response.base_offset)
                         {
                             virtual_response.base_offset = virtual_mapping.virtual_offset;
                         }
@@ -227,14 +227,17 @@ impl PartitionMapping {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::config::{KafkaConfig, MappingConfig, SecurityProtocol};
 
-    fn test_remapper() -> Arc<PartitionRemapper> {
-        Arc::new(PartitionRemapper::new(&MappingConfig {
+    fn test_registry() -> Arc<TopicRemapperRegistry> {
+        Arc::new(TopicRemapperRegistry::new(&MappingConfig {
             virtual_partitions: 100,
             physical_partitions: 10,
             offset_range: 1 << 40,
+            topics: HashMap::new(),
         }))
     }
 

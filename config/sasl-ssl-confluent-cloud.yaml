@@ -1,0 +1,102 @@
+# Kafka Partition Remapping Proxy - Confluent Cloud Configuration
+#
+# This configuration connects to Confluent Cloud using SASL_SSL authentication.
+# Clients connect using SASL/SCRAM, and the proxy authenticates to Confluent
+# Cloud using SASL/PLAIN with API keys.
+#
+# Environment variables required:
+#   CONFLUENT_API_KEY      - Confluent Cloud API key for proxy-to-broker auth
+#   CONFLUENT_API_SECRET   - Confluent Cloud API secret
+#
+# Usage:
+#   export CONFLUENT_API_KEY="your-api-key"
+#   export CONFLUENT_API_SECRET="your-api-secret"
+#   kafka-partition-proxy --config config/sasl-ssl-confluent-cloud.yaml
+
+listen:
+  # Proxy listen address
+  address: "0.0.0.0:9092"
+  # Advertised address for client reconnections (update for your environment)
+  advertised_address: "kafka-proxy.example.com:9092"
+  # Connection limit for production workloads
+  max_connections: 5000
+
+  security:
+    # Full security: TLS encryption + SASL authentication
+    protocol: SASL_SSL
+    tls:
+      # Server certificate presented to clients
+      cert_path: "/etc/kafka-proxy/tls/server.crt"
+      key_path: "/etc/kafka-proxy/tls/server.key"
+      # Optional: CA for verifying client certificates (mTLS)
+      # ca_cert_path: "/etc/kafka-proxy/tls/client-ca.crt"
+      # require_client_cert: false
+    sasl:
+      # SCRAM is more secure than PLAIN for client authentication
+      enabled_mechanisms:
+        - SCRAM-SHA-256
+        - SCRAM-SHA-512
+      credentials:
+        # Load credentials from external file (recommended for production)
+        file: "/etc/kafka-proxy/secrets/client-credentials.yaml"
+        # Or define inline (useful for testing):
+        # users:
+        #   admin: "admin-password"
+        #   producer-app: "producer-secret"
+        #   consumer-app: "consumer-secret"
+
+kafka:
+  # Confluent Cloud bootstrap servers
+  # Replace with your cluster's bootstrap server
+  bootstrap_servers:
+    - "pkc-xxxxx.us-east-1.aws.confluent.cloud:9092"
+  connection_timeout_ms: 10000
+  request_timeout_ms: 30000
+  # Refresh metadata every 60 seconds (Confluent Cloud clusters are stable)
+  metadata_refresh_interval_secs: 60
+
+  # Connect to Confluent Cloud with SASL_SSL
+  security_protocol: SASL_SSL
+  tls:
+    # Confluent Cloud uses publicly trusted certificates
+    # No ca_cert_path needed unless using private link
+    insecure_skip_verify: false
+  sasl:
+    # Confluent Cloud requires PLAIN mechanism with API key/secret
+    mechanism: PLAIN
+    username: "${CONFLUENT_API_KEY}"
+    password: "${CONFLUENT_API_SECRET}"
+
+mapping:
+  # 10:1 compression - expose 1000 virtual partitions backed by 100 physical
+  # This provides 90% cost savings on partition-based pricing
+  virtual_partitions: 1000
+  physical_partitions: 100
+  # Default offset range: ~1.1 trillion offsets per virtual partition
+  offset_range: 1099511627776
+
+  # Per-topic overrides for different workload characteristics
+  topics:
+    # High-throughput events topic: 50:1 compression
+    "events":
+      virtual_partitions: 5000
+      physical_partitions: 100
+
+    # Audit logs: moderate compression
+    "audit-logs":
+      virtual_partitions: 200
+      physical_partitions: 20
+
+    # Internal topics: no remapping (1:1)
+    "__consumer_offsets":
+      virtual_partitions: 50
+      physical_partitions: 50
+
+metrics:
+  enabled: true
+  address: "0.0.0.0:9090"
+
+logging:
+  # Production logging: info level, JSON format
+  level: "info"
+  json: true

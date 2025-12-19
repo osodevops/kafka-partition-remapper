@@ -1,0 +1,124 @@
+# Kafka Partition Remapping Proxy - Multi-Tenant Configuration
+#
+# This configuration supports multi-tenant SaaS platforms where:
+# - Each tenant gets dedicated virtual partition space
+# - Different tenants may have different partition requirements
+# - Shared physical infrastructure for cost efficiency
+#
+# Tenant isolation strategy:
+# - Topic naming: {tenant-id}.{topic-name} (e.g., "acme.events", "globex.orders")
+# - Per-tenant partition mapping via regex patterns
+# - Shared physical partitions across tenants
+#
+# Cost model:
+# - 100 physical partitions shared across all tenants
+# - Each tenant sees up to 1000 virtual partitions per topic
+# - 10:1 to 100:1 compression depending on tenant tier
+
+listen:
+  address: "0.0.0.0:9092"
+  advertised_address: "kafka-proxy.saas.example.com:9092"
+  # Higher limit for multi-tenant workloads
+  max_connections: 10000
+
+  security:
+    protocol: SASL_SSL
+    tls:
+      cert_path: "/etc/kafka-proxy/tls/server.crt"
+      key_path: "/etc/kafka-proxy/tls/server.key"
+    sasl:
+      enabled_mechanisms:
+        - SCRAM-SHA-256
+      credentials:
+        # Per-tenant credentials managed externally
+        file: "/etc/kafka-proxy/secrets/tenant-credentials.yaml"
+
+kafka:
+  bootstrap_servers:
+    - "kafka-broker-1.internal:9092"
+    - "kafka-broker-2.internal:9092"
+    - "kafka-broker-3.internal:9092"
+  connection_timeout_ms: 10000
+  request_timeout_ms: 30000
+  metadata_refresh_interval_secs: 30
+
+  security_protocol: SASL_SSL
+  sasl:
+    mechanism: SCRAM-SHA-256
+    username: "proxy-service"
+    password: "${KAFKA_PROXY_PASSWORD}"
+
+mapping:
+  # Default: 10:1 compression for standard tenants
+  virtual_partitions: 100
+  physical_partitions: 10
+  offset_range: 1099511627776
+
+  topics:
+    # =========================================
+    # Enterprise Tier Tenants (100:1 compression)
+    # =========================================
+
+    # Acme Corp - Enterprise tier
+    "acme\\..*":
+      virtual_partitions: 1000
+      physical_partitions: 10
+
+    # Globex Inc - Enterprise tier with high throughput
+    "globex\\.events":
+      virtual_partitions: 2000
+      physical_partitions: 20
+
+    "globex\\..*":
+      virtual_partitions: 1000
+      physical_partitions: 10
+
+    # =========================================
+    # Business Tier Tenants (50:1 compression)
+    # =========================================
+
+    # Initech - Business tier
+    "initech\\..*":
+      virtual_partitions: 500
+      physical_partitions: 10
+
+    # Umbrella Corp - Business tier
+    "umbrella\\..*":
+      virtual_partitions: 500
+      physical_partitions: 10
+
+    # =========================================
+    # Starter Tier Tenants (20:1 compression)
+    # =========================================
+
+    # Smaller tenants - Starter tier pattern
+    "starter-.*\\..*":
+      virtual_partitions: 100
+      physical_partitions: 5
+
+    # =========================================
+    # System Topics (no remapping)
+    # =========================================
+
+    # Platform-internal topics
+    "platform\\..*":
+      virtual_partitions: 10
+      physical_partitions: 10
+
+    # Tenant metadata
+    "tenant-registry":
+      virtual_partitions: 3
+      physical_partitions: 3
+
+    # DLQ for all tenants
+    ".*\\.dlq":
+      virtual_partitions: 20
+      physical_partitions: 10
+
+metrics:
+  enabled: true
+  address: "0.0.0.0:9090"
+
+logging:
+  level: "info"
+  json: true
