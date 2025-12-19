@@ -175,7 +175,7 @@ jobs:
           done
 
       - name: Run E2E tests
-        run: cargo test --package kafka-remapper-core --features testing --test e2e -- --nocapture
+        run: cargo test --package kafka-remapper-core --features testing --test e2e_tests -- --nocapture
         env:
           KAFKA_BOOTSTRAP_SERVERS: localhost:9092
           RUST_LOG: debug
@@ -206,7 +206,7 @@ jobs:
             ${{ runner.os }}-cargo-bench-
 
       - name: Run benchmarks
-        run: cargo bench --package kafka-remapper-core -- --noplot
+        run: cargo bench --package kafka-remapper-core --bench partition_remapping -- --noplot
 
       - name: Upload benchmark results
         uses: actions/upload-artifact@v4
