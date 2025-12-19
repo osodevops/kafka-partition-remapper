@@ -211,14 +211,38 @@ jobs:
           path: |
             ${{ steps.cargo-dist.outputs.paths }}
             ${{ env.BUILD_MANIFEST_NAME }}
+
+  # Publish kafka-remapper-core to crates.io
+  publish-crates-io:
+    needs:
+      - plan
+      - build-local-artifacts
+    if: ${{ needs.plan.outputs.publishing == 'true' }}
+    runs-on: "ubuntu-22.04"
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          submodules: recursive
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Verify publishable (dry-run)
+        run: cargo publish -p kafka-remapper-core --dry-run
+      - name: Publish to crates.io
+        run: cargo publish -p kafka-remapper-core
+
   # Determines if we should publish/announce
   host:
     needs:
       - plan
       - build-local-artifacts
       - build-global-artifacts
-    # Only run if we're "publishing", and only if plan, local and global didn't fail (skipped is fine)
-    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') }}
+      - publish-crates-io
+    # Only run if we're "publishing", and only if plan, local, global, and crates.io didn't fail (skipped is fine)
+    if: ${{ always() && needs.plan.result == 'success' && needs.plan.outputs.publishing == 'true' && (needs.build-global-artifacts.result == 'skipped' || needs.build-global-artifacts.result == 'success') && (needs.build-local-artifacts.result == 'skipped' || needs.build-local-artifacts.result == 'success') && (needs.publish-crates-io.result == 'skipped' || needs.publish-crates-io.result == 'success') }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     runs-on: "ubuntu-22.04"
@@ -324,15 +348,39 @@ jobs:
           done
           git push
 
+  # Trigger Scoop bucket update for Windows package manager
+  publish-scoop-manifest:
+    needs:
+      - plan
+      - host
+    runs-on: "ubuntu-22.04"
+    if: ${{ !fromJson(needs.plan.outputs.val).announcement_is_prerelease || fromJson(needs.plan.outputs.val).publish_prereleases }}
+    steps:
+      - name: Dispatch Scoop manifest update
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
+          script: |
+            await github.rest.repos.createDispatchEvent({
+              owner: 'osodevops',
+              repo: 'scoop-bucket',
+              event_type: 'update-manifest',
+              client_payload: {
+                tag: '${{ needs.plan.outputs.tag }}',
+                name: 'kafka-partition-proxy'
+              }
+            })
+
   announce:
     needs:
       - plan
       - host
       - publish-homebrew-formula
+      - publish-scoop-manifest
     # use "always() && ..." to allow us to wait for all publish jobs while
     # still allowing individual publish jobs to skip themselves (for prereleases).
     # "host" however must run to completion, no skipping allowed!
-    if: ${{ always() && needs.host.result == 'success' && (needs.publish-homebrew-formula.result == 'skipped' || needs.publish-homebrew-formula.result == 'success') }}
+    if: ${{ always() && needs.host.result == 'success' && (needs.publish-homebrew-formula.result == 'skipped' || needs.publish-homebrew-formula.result == 'success') && (needs.publish-scoop-manifest.result == 'skipped' || needs.publish-scoop-manifest.result == 'success') }}
     runs-on: "ubuntu-22.04"
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

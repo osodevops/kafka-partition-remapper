@@ -10,7 +10,7 @@
     <img src="https://github.com/osodevops/kafka-partition-remapper/actions/workflows/test.yml/badge.svg" alt="CI Status">
   </a>
   <a href="https://github.com/osodevops/kafka-partition-remapper/blob/main/LICENSE">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT">
+    <img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0">
   </a>
   <a href="https://github.com/osodevops/kafka-partition-remapper/releases">
     <img src="https://img.shields.io/github/v/release/osodevops/kafka-partition-remapper" alt="Release">
@@ -73,6 +73,18 @@ Evolve your Kafka topology over time with a proxy layer that decouples client ex
 
 ### Multi-Tenant Isolation
 Give each tenant their own virtual partition space while efficiently sharing physical resources.
+
+## Why Kafka Partition Remapper?
+
+| Feature | Partition Remapper | MirrorMaker 2 | Custom Routing | TCP Load Balancer |
+|---------|-------------------|---------------|----------------|-------------------|
+| Zero code changes | ✅ | ❌ | ❌ | ✅ |
+| Partition-level control | ✅ | ❌ | ✅ | ❌ |
+| Offset translation | ✅ | ✅ | ❌ | ❌ |
+| Protocol transparency | ✅ | ❌ | ❌ | ❌ |
+| No additional infrastructure | ✅ | ❌ | ❌ | ❌ |
+| Multi-tenant isolation | ✅ | ❌ | ✅ | ❌ |
+| SASL/TLS support | ✅ | ✅ | ✅ | ✅ |
 
 ## How It Works
 
@@ -155,6 +167,66 @@ docker compose up -d
 
 See the [Quickstart Guide](docs/quickstart.md) for detailed instructions.
 
+## Try It Yourself
+
+Get hands-on with example configurations in the [`config/`](./config/) directory:
+
+| Configuration | Description |
+|--------------|-------------|
+| [`example.yaml`](config/example.yaml) | Basic configuration for getting started |
+| [`development-local.yaml`](config/development-local.yaml) | Local development setup |
+| [`sasl-ssl-confluent-cloud.yaml`](config/sasl-ssl-confluent-cloud.yaml) | Confluent Cloud with SASL/SSL |
+| [`sasl-scram-internal.yaml`](config/sasl-scram-internal.yaml) | Internal Kafka with SCRAM authentication |
+| [`mtls-enterprise.yaml`](config/mtls-enterprise.yaml) | Enterprise mTLS configuration |
+| [`multi-tenant.yaml`](config/multi-tenant.yaml) | Multi-tenant isolation setup |
+| [`high-throughput.yaml`](config/high-throughput.yaml) | Optimized for high throughput |
+
+```bash
+# Run with an example config
+docker run -v $(pwd)/config:/config osodevops/kafka-partition-remapper \
+  --config /config/example.yaml
+```
+
+## Installation
+
+### macOS (Homebrew)
+
+```bash
+brew install osodevops/tap/kafka-partition-proxy
+```
+
+### Linux/macOS (Shell Installer)
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/osodevops/kafka-partition-remapper/releases/latest/download/kafka-remapper-cli-installer.sh | sh
+```
+
+### Windows (PowerShell Installer)
+
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/osodevops/kafka-partition-remapper/releases/latest/download/kafka-remapper-cli-installer.ps1 | iex"
+```
+
+### Windows (Scoop)
+
+```powershell
+scoop bucket add oso https://github.com/osodevops/scoop-bucket.git
+scoop install kafka-partition-proxy
+```
+
+### Docker
+
+```bash
+docker pull osodevops/kafka-partition-remapper
+docker run --rm osodevops/kafka-partition-remapper --help
+```
+
+### From Source
+
+```bash
+cargo install --git https://github.com/osodevops/kafka-partition-remapper kafka-remapper-cli
+```
+
 ## Configuration
 
 | Section | Option | Description | Default |
@@ -215,11 +287,21 @@ See the [Quickstart Guide](docs/quickstart.md) for detailed instructions.
 
 Benchmarks available via `cargo bench`.
 
-## Limitations (MVP)
+## Documentation
 
-- **Global mapping only** — Same V:P ratio for all topics
-- **PLAINTEXT only** — No SASL/TLS passthrough (deploy in VPC)
-- **Kafka 3.6+** — Tested with Confluent Cloud
+| Document | Description |
+|----------|-------------|
+| [Quick Start](docs/quickstart.md) | Get running in 5 minutes |
+| [Configuration Reference](docs/configuration.md) | Complete configuration options |
+| [Architecture](docs/architecture.md) | System design and internals |
+| [Authentication](docs/authentication.md) | TLS, SASL, mTLS setup guide |
+| [Protocol Mapping](docs/protocol-mapping.md) | Kafka protocol implementation details |
+| [Getting Started](docs/getting-started.md) | Detailed setup and deployment |
+
+## Limitations
+
+- **Global mapping by default** — Same V:P ratio for all topics (per-topic overrides available)
+- **Kafka 3.6+** — Tested with Confluent Cloud and Apache Kafka 3.6+
 - **Fixed partition counts** — Topics must have exactly `physical_partitions` partitions
 
 ## Project Structure
@@ -273,7 +355,7 @@ Contributions are welcome! Please read our contributing guidelines before submit
 
 ## License
 
-Kafka Partition Remapping Proxy is licensed under the [MIT License](LICENSE).
+Kafka Partition Remapping Proxy is licensed under the [Apache License 2.0](LICENSE).
 
 ---
 

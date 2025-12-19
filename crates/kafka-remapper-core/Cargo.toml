@@ -4,7 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
 description = "Core library for Kafka partition remapping proxy"
+keywords = ["kafka", "proxy", "partition", "remapping", "streaming"]
+categories = ["network-programming", "asynchronous"]
+documentation = "https://docs.rs/kafka-remapper-core"
+readme = "README.md"
+exclude = ["tests/*", "benches/*"]
 
 [features]
 default = []
