@@ -76,15 +76,20 @@ Give each tenant their own virtual partition space while efficiently sharing phy
 
 ## Why Kafka Partition Remapper?
 
-| Feature | Partition Remapper | MirrorMaker 2 | Custom Routing | TCP Load Balancer |
-|---------|-------------------|---------------|----------------|-------------------|
-| Zero code changes | ✅ | ❌ | ❌ | ✅ |
-| Partition-level control | ✅ | ❌ | ✅ | ❌ |
-| Offset translation | ✅ | ✅ | ❌ | ❌ |
-| Protocol transparency | ✅ | ❌ | ❌ | ❌ |
-| No additional infrastructure | ✅ | ❌ | ❌ | ❌ |
-| Multi-tenant isolation | ✅ | ❌ | ✅ | ❌ |
-| SASL/TLS support | ✅ | ✅ | ✅ | ✅ |
+| Feature | Partition Remapper | [Kroxylicious](https://kroxylicious.io/) | [Conduktor Gateway](https://docs.conduktor.io/gateway) | [kafka-proxy](https://github.com/grepplabs/kafka-proxy) |
+|---------|-------------------|--------------|-------------------|-------------|
+| Partition virtualization | ✅ | ❌ | ❌ | ❌ |
+| Offset translation | ✅ | ❌ | ❌ | ❌ |
+| Cost reduction (V:P mapping) | ✅ | ❌ | ❌ | ❌ |
+| Zero code changes | ✅ | ✅ | ✅ | ✅ |
+| TLS termination | ✅ | ✅ | ✅ | ✅ |
+| SASL authentication | ✅ | ✅ | ✅ | ✅ |
+| Schema validation | ❌ | ✅ | ✅ | ❌ |
+| Field-level encryption | ❌ | ✅ | ✅ | ❌ |
+| Open source | ✅ | ✅ | ❌ | ✅ |
+| Written in | Rust | Java | Java | Go |
+
+**Unique to Partition Remapper**: Virtual partition mapping enables 10:1 or higher cost reduction on partition-based pricing (e.g., Confluent Cloud) without changing client code.
 
 ## How It Works
 
