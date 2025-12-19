@@ -76,20 +76,20 @@ Give each tenant their own virtual partition space while efficiently sharing phy
 
 ## Why Kafka Partition Remapper?
 
-| Feature | Partition Remapper | [Kroxylicious](https://kroxylicious.io/) | [Conduktor Gateway](https://docs.conduktor.io/gateway) | [kafka-proxy](https://github.com/grepplabs/kafka-proxy) |
-|---------|-------------------|--------------|-------------------|-------------|
-| Partition virtualization | ✅ | ❌ | ❌ | ❌ |
-| Offset translation | ✅ | ❌ | ❌ | ❌ |
-| Cost reduction (V:P mapping) | ✅ | ❌ | ❌ | ❌ |
+| Feature | Partition Remapper | [Conduktor Gateway](https://docs.conduktor.io/gateway) | [Kroxylicious](https://kroxylicious.io/) | [kafka-proxy](https://github.com/grepplabs/kafka-proxy) |
+|---------|-------------------|-------------------|--------------|-------------|
+| Partition virtualization | ✅ | ✅ (Concentrated Topics) | ❌ | ❌ |
+| Offset translation | ✅ | ✅ (with limitations) | ❌ | ❌ |
+| Cost reduction (V:P mapping) | ✅ | ✅ | ❌ | ❌ |
 | Zero code changes | ✅ | ✅ | ✅ | ✅ |
 | TLS termination | ✅ | ✅ | ✅ | ✅ |
 | SASL authentication | ✅ | ✅ | ✅ | ✅ |
 | Schema validation | ❌ | ✅ | ✅ | ❌ |
 | Field-level encryption | ❌ | ✅ | ✅ | ❌ |
-| Open source | ✅ | ✅ | ❌ | ✅ |
+| Open source | ✅ | ❌ (Enterprise) | ✅ | ✅ |
 | Written in | Rust | Java | Java | Go |
 
-**Unique to Partition Remapper**: Virtual partition mapping enables 10:1 or higher cost reduction on partition-based pricing (e.g., Confluent Cloud) without changing client code.
+**Why choose Partition Remapper?** Open source, lightweight, and purpose-built for partition cost optimization with minimal overhead. No enterprise license required.
 
 ## How It Works
 
