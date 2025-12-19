@@ -97,6 +97,8 @@ auto-includes = true
 tap = "osodevops/homebrew-tap"
 # Publish jobs to run in CI
 publish-jobs = ["homebrew"]
+# Allow custom modifications to release.yml (crates.io, scoop publishing)
+allow-dirty = ["ci"]
 
 # The profile that 'cargo dist' will build with
 [profile.dist]
