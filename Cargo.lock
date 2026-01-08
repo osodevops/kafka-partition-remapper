@@ -1338,7 +1338,7 @@ dependencies = [
 
 [[package]]
 name = "kafka-remapper-cli"
-version = "0.5.5"
+version = "0.5.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -1353,7 +1353,7 @@ dependencies = [
 
 [[package]]
 name = "kafka-remapper-core"
-version = "0.5.5"
+version = "0.5.6"
 dependencies = [
  "async-trait",
  "base64 0.22.1",

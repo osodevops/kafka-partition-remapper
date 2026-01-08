@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::BytesMut;
-use kafka_protocol::messages::{FetchRequest, FetchResponse};
-use kafka_protocol::protocol::{Decodable, Encodable};
+use kafka_protocol::messages::{FetchRequest, FetchResponse, RequestHeader, ResponseHeader};
+use kafka_protocol::protocol::{Decodable, Encodable, HeaderVersion};
 use tracing::debug;
 
 use crate::broker::BrokerPool;
@@ -165,13 +165,20 @@ impl ProtocolHandler for FetchHandler {
             "handling Fetch"
         );
 
-        // Calculate header size (simplified - 8 bytes minimum)
-        let header_size = 8;
-        let request_body = bytes::Bytes::copy_from_slice(&frame.bytes[header_size..]);
+        // Decode request header first to skip past it
+        // The header includes api_key, api_version, correlation_id, client_id, and for v2+ tagged fields
+        let request_header_version = FetchRequest::header_version(frame.api_version);
+        let mut request_bytes = bytes::Bytes::copy_from_slice(&frame.bytes);
+        let _request_header =
+            RequestHeader::decode(&mut request_bytes, request_header_version).map_err(|e| {
+                ProxyError::ProtocolDecode {
+                    message: format!("failed to decode request header: {e}"),
+                }
+            })?;
 
-        // Decode request
+        // Now decode the request body (request_bytes now points past the header)
         let request =
-            FetchRequest::decode(&mut request_body.clone(), frame.api_version).map_err(|e| {
+            FetchRequest::decode(&mut request_bytes, frame.api_version).map_err(|e| {
                 ProxyError::ProtocolDecode {
                     message: format!("failed to decode FetchRequest: {e}"),
                 }
@@ -180,11 +187,19 @@ impl ProtocolHandler for FetchHandler {
         // Transform to physical
         let (physical_request, mapping) = self.physicalize_request(request)?;
 
-        // Encode the physical request
+        // Encode the physical request with header
         let mut physical_bytes = BytesMut::new();
 
-        // Write request header
-        physical_bytes.extend_from_slice(&frame.bytes[..header_size]);
+        // Re-encode request header (preserve original client_id and tagged fields)
+        let request_header = RequestHeader::default()
+            .with_request_api_key(frame.api_key as i16)
+            .with_request_api_version(frame.api_version)
+            .with_correlation_id(frame.correlation_id);
+        request_header
+            .encode(&mut physical_bytes, request_header_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
+                message: format!("failed to encode request header: {e}"),
+            })?;
 
         // Write request body
         physical_request
@@ -196,8 +211,17 @@ impl ProtocolHandler for FetchHandler {
         // Forward to broker
         let response_body = self.broker_pool.send_request(&physical_bytes).await?;
 
-        // Decode broker response (skip correlation ID - first 4 bytes)
-        let mut response_bytes = response_body.slice(4..);
+        // Decode broker response header first
+        // For Fetch v12+, the response uses a flexible header (version 1) with tagged fields
+        let header_version = FetchResponse::header_version(frame.api_version);
+        let mut response_bytes = bytes::Bytes::copy_from_slice(&response_body);
+        let _header = ResponseHeader::decode(&mut response_bytes, header_version).map_err(|e| {
+            ProxyError::ProtocolDecode {
+                message: format!("failed to decode response header: {e}"),
+            }
+        })?;
+
+        // Now decode the response body
         let response =
             FetchResponse::decode(&mut response_bytes, frame.api_version).map_err(|e| {
                 ProxyError::ProtocolDecode {
@@ -208,8 +232,16 @@ impl ProtocolHandler for FetchHandler {
         // Virtualize response
         let virtualized = self.virtualize_response(response, &mapping)?;
 
-        // Encode response
+        // Encode response with proper header
+        // For flexible versions (Fetch v12+), the response header includes tagged fields
         let mut buf = BytesMut::new();
+        let header_version = FetchResponse::header_version(frame.api_version);
+
+        // For flexible versions (header v1), add empty tagged fields varint (0x00)
+        if header_version >= 1 {
+            buf.extend_from_slice(&[0u8]);
+        }
+
         virtualized
             .encode(&mut buf, frame.api_version)
             .map_err(|e| ProxyError::ProtocolEncode {

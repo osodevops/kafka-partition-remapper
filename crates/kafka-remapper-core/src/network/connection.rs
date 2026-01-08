@@ -25,9 +25,14 @@ use tokio_util::codec::Framed;
 use tracing::{debug, info, instrument, warn};
 
 use crate::auth::{Principal, SaslServer};
+use crate::broker::BrokerPool;
 use crate::config::ProxyConfig;
 use crate::error::{ProxyError, Result};
-use crate::handlers::SaslHandler;
+use crate::handlers::{
+    ApiVersionsHandler, FetchHandler, MetadataHandler, PassthroughHandler, ProduceHandler,
+    ProtocolHandler, SaslHandler,
+};
+use crate::remapper::TopicRemapperRegistry;
 
 use super::client_stream::ClientStream;
 use super::codec::{KafkaCodec, KafkaFrame, ResponseFrame};
@@ -47,6 +52,16 @@ pub struct ConnectionHandler {
     context: ConnectionContext,
     /// Flag to track if principal has been upgraded after SASL auth.
     principal_upgraded: bool,
+    /// Handler for ApiVersions requests.
+    api_versions_handler: ApiVersionsHandler,
+    /// Handler for Metadata requests.
+    metadata_handler: MetadataHandler,
+    /// Handler for Produce requests.
+    produce_handler: ProduceHandler,
+    /// Handler for Fetch requests.
+    fetch_handler: FetchHandler,
+    /// Handler for passthrough requests (group coordination, offsets).
+    passthrough_handler: PassthroughHandler,
 }
 
 impl ConnectionHandler {
@@ -58,19 +73,36 @@ impl ConnectionHandler {
     /// * `shutdown_rx` - Receiver for shutdown signals
     /// * `sasl_server` - Optional SASL server for authentication
     /// * `context` - Connection context with initial principal
+    /// * `broker_pool` - Pool of broker connections for forwarding requests
+    /// * `registry` - Topic-aware partition remapper registry
     #[must_use]
     pub fn new(
         config: Arc<ProxyConfig>,
         shutdown_rx: broadcast::Receiver<()>,
         sasl_server: Option<Arc<SaslServer>>,
         context: ConnectionContext,
+        broker_pool: Arc<BrokerPool>,
+        registry: Arc<TopicRemapperRegistry>,
     ) -> Self {
+        // Create handlers
+        let api_versions_handler = ApiVersionsHandler::new(Arc::clone(&broker_pool));
+        let metadata_handler =
+            MetadataHandler::new(Arc::clone(&registry), Arc::clone(&broker_pool), &config.listen);
+        let produce_handler = ProduceHandler::new(Arc::clone(&registry), Arc::clone(&broker_pool));
+        let fetch_handler = FetchHandler::new(Arc::clone(&registry), Arc::clone(&broker_pool));
+        let passthrough_handler = PassthroughHandler::new(broker_pool);
+
         Self {
             config,
             shutdown_rx,
             sasl_server,
             context,
             principal_upgraded: false,
+            api_versions_handler,
+            metadata_handler,
+            produce_handler,
+            fetch_handler,
+            passthrough_handler,
         }
     }
 
@@ -270,25 +302,9 @@ impl ConnectionHandler {
 
     /// Handle ApiVersions request.
     ///
-    /// For now, return a stub response. Will be implemented in Phase 5.
+    /// Forwards request to broker and filters response to supported APIs.
     async fn handle_api_versions(&self, frame: KafkaFrame) -> Result<ResponseFrame> {
-        debug!(
-            correlation_id = frame.correlation_id,
-            "handling ApiVersions"
-        );
-
-        // TODO: Implement proper ApiVersions response in Phase 5
-        // For now, return a minimal valid response
-
-        // ApiVersions response format (simplified v0):
-        // - error_code (2 bytes): 0 = no error
-        // - api_keys array length (4 bytes)
-        // - (empty array for now)
-
-        let mut body = BytesMut::new();
-        body.extend_from_slice(&[0, 0]); // error_code = 0
-        body.extend_from_slice(&[0, 0, 0, 0]); // empty array
-
+        let body = self.api_versions_handler.handle(&frame).await?;
         Ok(ResponseFrame {
             correlation_id: frame.correlation_id,
             body,
@@ -297,16 +313,10 @@ impl ConnectionHandler {
 
     /// Handle Metadata request.
     ///
-    /// Stub - will be implemented in Phase 5.
+    /// Expands physical partitions to virtual partitions and rewrites broker
+    /// addresses to point to the proxy.
     async fn handle_metadata(&self, frame: KafkaFrame) -> Result<ResponseFrame> {
-        debug!(correlation_id = frame.correlation_id, "handling Metadata");
-
-        // TODO: Implement proper Metadata response with partition virtualization
-        let mut body = BytesMut::new();
-        // Minimal response with empty brokers and topics
-        body.extend_from_slice(&[0, 0, 0, 0]); // empty brokers array
-        body.extend_from_slice(&[0, 0, 0, 0]); // empty topics array
-
+        let body = self.metadata_handler.handle(&frame).await?;
         Ok(ResponseFrame {
             correlation_id: frame.correlation_id,
             body,
@@ -315,44 +325,38 @@ impl ConnectionHandler {
 
     /// Handle Produce request.
     ///
-    /// Stub - will be implemented in Phase 5.
+    /// Maps virtual partitions to physical partitions in the request and
+    /// translates offsets in the response.
     async fn handle_produce(&self, frame: KafkaFrame) -> Result<ResponseFrame> {
-        debug!(correlation_id = frame.correlation_id, "handling Produce");
-
-        // TODO: Implement partition remapping for produce
-        Err(ProxyError::BrokerUnavailable {
-            broker_id: -1,
-            message: "produce handler not implemented".to_string(),
+        let body = self.produce_handler.handle(&frame).await?;
+        Ok(ResponseFrame {
+            correlation_id: frame.correlation_id,
+            body,
         })
     }
 
     /// Handle Fetch request.
     ///
-    /// Stub - will be implemented in Phase 5.
+    /// Maps virtual partitions to physical partitions in the request and
+    /// translates offsets in the response.
     async fn handle_fetch(&self, frame: KafkaFrame) -> Result<ResponseFrame> {
-        debug!(correlation_id = frame.correlation_id, "handling Fetch");
-
-        // TODO: Implement partition remapping for fetch
-        Err(ProxyError::BrokerUnavailable {
-            broker_id: -1,
-            message: "fetch handler not implemented".to_string(),
+        let body = self.fetch_handler.handle(&frame).await?;
+        Ok(ResponseFrame {
+            correlation_id: frame.correlation_id,
+            body,
         })
     }
 
     /// Handle passthrough request (forward to broker unchanged).
     ///
-    /// Stub - will be implemented in Phase 4/5.
+    /// Used for group coordination APIs (JoinGroup, SyncGroup, Heartbeat,
+    /// LeaveGroup, FindCoordinator) and offset APIs (OffsetCommit, OffsetFetch,
+    /// ListOffsets) which don't require partition remapping.
     async fn handle_passthrough(&self, frame: KafkaFrame) -> Result<ResponseFrame> {
-        debug!(
-            api_key = ?frame.api_key,
-            correlation_id = frame.correlation_id,
-            "handling passthrough"
-        );
-
-        // TODO: Forward to broker connection pool
-        Err(ProxyError::BrokerUnavailable {
-            broker_id: -1,
-            message: "passthrough handler not implemented".to_string(),
+        let body = self.passthrough_handler.handle(&frame).await?;
+        Ok(ResponseFrame {
+            correlation_id: frame.correlation_id,
+            body,
         })
     }
 }
@@ -391,15 +395,26 @@ mod tests {
         })
     }
 
+    fn test_broker_pool(config: &Arc<ProxyConfig>) -> Arc<BrokerPool> {
+        Arc::new(BrokerPool::new(config.kafka.clone()))
+    }
+
+    fn test_registry(config: &Arc<ProxyConfig>) -> Arc<TopicRemapperRegistry> {
+        Arc::new(TopicRemapperRegistry::new(&config.mapping))
+    }
+
     fn test_context() -> ConnectionContext {
         let addr: SocketAddr = "127.0.0.1:12345".parse().unwrap();
         ConnectionContext::anonymous(addr, "test-conn".to_string())
     }
 
     #[tokio::test]
-    async fn test_handle_api_versions_stub() {
+    async fn test_handle_api_versions() {
         let (tx, rx) = broadcast::channel(1);
-        let handler = ConnectionHandler::new(test_config(), rx, None, test_context());
+        let config = test_config();
+        let broker_pool = test_broker_pool(&config);
+        let registry = test_registry(&config);
+        let handler = ConnectionHandler::new(config, rx, None, test_context(), broker_pool, registry);
 
         let frame = KafkaFrame {
             api_key: ApiKey::ApiVersions,
@@ -408,28 +423,11 @@ mod tests {
             bytes: BytesMut::new(),
         };
 
+        // This will attempt to connect to broker and fail, falling back to local response
         let response = handler.handle_api_versions(frame).await.unwrap();
         assert_eq!(response.correlation_id, 12345);
-        // Should have some response body
+        // Should have some response body with supported APIs
         assert!(!response.body.is_empty());
-
-        drop(tx);
-    }
-
-    #[tokio::test]
-    async fn test_handle_metadata_stub() {
-        let (tx, rx) = broadcast::channel(1);
-        let handler = ConnectionHandler::new(test_config(), rx, None, test_context());
-
-        let frame = KafkaFrame {
-            api_key: ApiKey::Metadata,
-            api_version: 9,
-            correlation_id: 54321,
-            bytes: BytesMut::new(),
-        };
-
-        let response = handler.handle_metadata(frame).await.unwrap();
-        assert_eq!(response.correlation_id, 54321);
 
         drop(tx);
     }
@@ -437,7 +435,10 @@ mod tests {
     #[tokio::test]
     async fn test_unsupported_api() {
         let (tx, rx) = broadcast::channel(1);
-        let handler = ConnectionHandler::new(test_config(), rx, None, test_context());
+        let config = test_config();
+        let broker_pool = test_broker_pool(&config);
+        let registry = test_registry(&config);
+        let handler = ConnectionHandler::new(config, rx, None, test_context(), broker_pool, registry);
 
         let frame = KafkaFrame {
             api_key: ApiKey::CreateTopics, // Not supported
@@ -462,7 +463,10 @@ mod tests {
             "conn-test".to_string(),
             SecurityProtocol::Ssl,
         );
-        let handler = ConnectionHandler::new(test_config(), rx, None, context);
+        let config = test_config();
+        let broker_pool = test_broker_pool(&config);
+        let registry = test_registry(&config);
+        let handler = ConnectionHandler::new(config, rx, None, context, broker_pool, registry);
 
         assert_eq!(handler.principal().name, "test-user");
         assert_eq!(handler.principal().auth_method, AuthMethod::Ssl);

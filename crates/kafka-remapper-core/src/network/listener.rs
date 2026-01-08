@@ -22,8 +22,10 @@ use crate::auth::{
     AuthenticationContext, DefaultPrincipalBuilder, Principal, PrincipalBuilder, SaslServer,
     SslAuthenticationContext,
 };
+use crate::broker::BrokerPool;
 use crate::config::{ProxyConfig, SecurityProtocol};
 use crate::error::{ProxyError, Result};
+use crate::remapper::TopicRemapperRegistry;
 use crate::tls::TlsServerAcceptor;
 
 use super::client_stream::ClientStream;
@@ -52,16 +54,25 @@ pub struct ProxyListener {
     principal_builder: Arc<DefaultPrincipalBuilder>,
     /// Security protocol for client connections.
     security_protocol: SecurityProtocol,
+    /// Broker connection pool for forwarding requests.
+    broker_pool: Arc<BrokerPool>,
+    /// Topic-aware partition remapper registry.
+    registry: Arc<TopicRemapperRegistry>,
 }
 
 impl ProxyListener {
     /// Create a new proxy listener.
     ///
+    /// # Arguments
+    ///
+    /// * `config` - Proxy configuration
+    /// * `broker_pool` - Pre-connected broker connection pool
+    ///
     /// # Errors
     ///
     /// Returns an error if TLS is configured but the TLS acceptor cannot be created,
     /// or if SASL is configured but the SASL server cannot be created.
-    pub fn new(config: ProxyConfig) -> Result<Self> {
+    pub fn new(config: ProxyConfig, broker_pool: Arc<BrokerPool>) -> Result<Self> {
         let (shutdown_tx, _) = broadcast::channel(1);
 
         // Determine security protocol
@@ -142,6 +153,19 @@ impl ProxyListener {
             );
         }
 
+        info!(
+            bootstrap_servers = ?config.kafka.bootstrap_servers,
+            "Using provided broker connection pool"
+        );
+
+        // Create topic remapper registry
+        let registry = Arc::new(TopicRemapperRegistry::new(&config.mapping));
+        info!(
+            virtual_partitions = config.mapping.virtual_partitions,
+            physical_partitions = config.mapping.physical_partitions,
+            "Created partition remapper registry"
+        );
+
         Ok(Self {
             config: Arc::new(config),
             shutdown_tx,
@@ -150,6 +174,8 @@ impl ProxyListener {
             sasl_server,
             principal_builder: Arc::new(principal_builder),
             security_protocol,
+            broker_pool,
+            registry,
         })
     }
 
@@ -223,6 +249,8 @@ impl ProxyListener {
                             let sasl_server = self.sasl_server.clone();
                             let principal_builder = Arc::clone(&self.principal_builder);
                             let security_protocol = self.security_protocol;
+                            let broker_pool = Arc::clone(&self.broker_pool);
+                            let registry = Arc::clone(&self.registry);
 
                             tokio::spawn(async move {
                                 // Perform TLS handshake if TLS is configured
@@ -290,6 +318,8 @@ impl ProxyListener {
                                     shutdown_rx,
                                     sasl_server,
                                     context,
+                                    broker_pool,
+                                    registry,
                                 );
 
                                 if let Err(e) = handler.handle(stream).await {
@@ -374,10 +404,15 @@ mod tests {
         }
     }
 
+    fn test_broker_pool(config: &ProxyConfig) -> Arc<BrokerPool> {
+        Arc::new(BrokerPool::new(config.kafka.clone()))
+    }
+
     #[tokio::test]
     async fn test_listener_accepts_connection() {
         let config = test_config(19092);
-        let listener = ProxyListener::new(config).unwrap();
+        let broker_pool = test_broker_pool(&config);
+        let listener = ProxyListener::new(config, broker_pool).unwrap();
         let shutdown_handle = listener.shutdown_handle();
 
         // Spawn listener
@@ -400,7 +435,8 @@ mod tests {
     #[tokio::test]
     async fn test_listener_shutdown() {
         let config = test_config(19093);
-        let listener = ProxyListener::new(config).unwrap();
+        let broker_pool = test_broker_pool(&config);
+        let listener = ProxyListener::new(config, broker_pool).unwrap();
         let shutdown_handle = listener.shutdown_handle();
 
         let listener_task = tokio::spawn(async move { listener.run().await });
@@ -418,7 +454,8 @@ mod tests {
     #[test]
     fn test_listener_tls_not_enabled_by_default() {
         let config = test_config(19094);
-        let listener = ProxyListener::new(config).unwrap();
+        let broker_pool = test_broker_pool(&config);
+        let listener = ProxyListener::new(config, broker_pool).unwrap();
         assert!(!listener.is_tls_enabled());
     }
 }

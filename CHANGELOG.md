@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.6] - 2026-01-08
+
+### Fixed
+- Protocol version negotiation causing client disconnections with "broker does not support METADATA" error
+- Request/response header encoding for Kafka flexible protocol versions (v9+ Metadata/Produce, v12+ Fetch)
+- Background metadata refresh "early eof" error caused by duplicate length prefix in request encoding
+- Proper handler wiring in ConnectionHandler replacing stub implementations with real protocol handlers
+
+### Changed
+- Background metadata refresh now uses API v4 instead of v9 for broader broker compatibility
+
 ## [0.5.5] - 2025-12-19
 
 ### Added

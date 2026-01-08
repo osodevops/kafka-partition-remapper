@@ -11,9 +11,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::BytesMut;
-use kafka_protocol::messages::MetadataResponse;
-use kafka_protocol::protocol::{Decodable, Encodable, StrBytes};
-use tracing::debug;
+use kafka_protocol::messages::{MetadataResponse, ResponseHeader};
+use kafka_protocol::protocol::{Decodable, Encodable, HeaderVersion, StrBytes};
+use tracing::{debug, warn};
 
 use crate::broker::BrokerPool;
 use crate::config::ListenConfig;
@@ -147,8 +147,17 @@ impl ProtocolHandler for MetadataHandler {
         // Forward request to broker
         let response_body = self.broker_pool.send_request(&frame.bytes).await?;
 
-        // Decode broker response (skip correlation ID - first 4 bytes)
-        let mut response_bytes = response_body.slice(4..);
+        // Decode broker response header first
+        // For Metadata v9+, the response uses a flexible header (version 1) with tagged fields
+        let header_version = MetadataResponse::header_version(frame.api_version);
+        let mut response_bytes = bytes::Bytes::copy_from_slice(&response_body);
+        let _header = ResponseHeader::decode(&mut response_bytes, header_version).map_err(|e| {
+            ProxyError::ProtocolDecode {
+                message: format!("failed to decode response header: {e}"),
+            }
+        })?;
+
+        // Now decode the response body
         let mut response = MetadataResponse::decode(&mut response_bytes, frame.api_version)
             .map_err(|e| ProxyError::ProtocolDecode {
                 message: e.to_string(),
@@ -179,8 +188,19 @@ impl ProtocolHandler for MetadataHandler {
             "virtualized metadata response"
         );
 
-        // Encode response
+        // Encode response with proper header
+        // For flexible versions (Metadata v9+), the response header includes tagged fields
         let mut buf = BytesMut::new();
+        let header_version = MetadataResponse::header_version(frame.api_version);
+
+        // Note: We encode a minimal response header (just tagged fields for flexible versions)
+        // because the codec already adds the correlation_id prefix.
+        // For flexible versions (header v1), we need to add the tagged fields varint (0).
+        if header_version >= 1 {
+            // Add empty tagged fields varint (0x00) for flexible versions
+            buf.extend_from_slice(&[0u8]); // UnsignedVarInt(0) = 0x00
+        }
+
         virtualized
             .encode(&mut buf, frame.api_version)
             .map_err(|e| ProxyError::ProtocolEncode {

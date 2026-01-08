@@ -8,8 +8,8 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use bytes::BytesMut;
-use kafka_protocol::messages::{ProduceRequest, ProduceResponse};
-use kafka_protocol::protocol::{Decodable, Encodable};
+use kafka_protocol::messages::{ProduceRequest, ProduceResponse, RequestHeader, ResponseHeader};
+use kafka_protocol::protocol::{Decodable, Encodable, HeaderVersion};
 use tracing::debug;
 
 use crate::broker::BrokerPool;
@@ -128,12 +128,19 @@ impl ProtocolHandler for ProduceHandler {
             "handling Produce"
         );
 
-        // Decode the request (skip header - first 8 bytes: api_key, version, correlation_id)
-        // Actually we need to properly skip the request header
-        let header_size = self.calculate_header_size(frame.api_version);
-        let request_body = bytes::Bytes::copy_from_slice(&frame.bytes[header_size..]);
+        // Decode request header first to skip past it
+        // The header includes api_key, api_version, correlation_id, client_id, and for v2+ tagged fields
+        let request_header_version = ProduceRequest::header_version(frame.api_version);
+        let mut request_bytes = bytes::Bytes::copy_from_slice(&frame.bytes);
+        let _request_header =
+            RequestHeader::decode(&mut request_bytes, request_header_version).map_err(|e| {
+                ProxyError::ProtocolDecode {
+                    message: format!("failed to decode request header: {e}"),
+                }
+            })?;
 
-        let request = ProduceRequest::decode(&mut request_body.clone(), frame.api_version)
+        // Now decode the request body (request_bytes now points past the header)
+        let request = ProduceRequest::decode(&mut request_bytes, frame.api_version)
             .map_err(|e| ProxyError::ProtocolDecode {
                 message: format!("failed to decode ProduceRequest: {e}"),
             })?;
@@ -141,11 +148,19 @@ impl ProtocolHandler for ProduceHandler {
         // Transform to physical partitions
         let (physical_request, mapping) = self.physicalize_request(request)?;
 
-        // Encode the physical request
+        // Encode the physical request with header
         let mut physical_bytes = BytesMut::new();
 
-        // Write request header
-        physical_bytes.extend_from_slice(&frame.bytes[..header_size]);
+        // Re-encode request header
+        let request_header = RequestHeader::default()
+            .with_request_api_key(frame.api_key as i16)
+            .with_request_api_version(frame.api_version)
+            .with_correlation_id(frame.correlation_id);
+        request_header
+            .encode(&mut physical_bytes, request_header_version)
+            .map_err(|e| ProxyError::ProtocolEncode {
+                message: format!("failed to encode request header: {e}"),
+            })?;
 
         // Write request body
         physical_request
@@ -157,8 +172,17 @@ impl ProtocolHandler for ProduceHandler {
         // Forward to broker
         let response_body = self.broker_pool.send_request(&physical_bytes).await?;
 
-        // Decode broker response (skip correlation ID - first 4 bytes)
-        let mut response_bytes = response_body.slice(4..);
+        // Decode broker response header first
+        // For Produce v9+, the response uses a flexible header (version 1) with tagged fields
+        let header_version = ProduceResponse::header_version(frame.api_version);
+        let mut response_bytes = bytes::Bytes::copy_from_slice(&response_body);
+        let _header = ResponseHeader::decode(&mut response_bytes, header_version).map_err(|e| {
+            ProxyError::ProtocolDecode {
+                message: format!("failed to decode response header: {e}"),
+            }
+        })?;
+
+        // Now decode the response body
         let response =
             ProduceResponse::decode(&mut response_bytes, frame.api_version).map_err(|e| {
                 ProxyError::ProtocolDecode {
@@ -169,8 +193,16 @@ impl ProtocolHandler for ProduceHandler {
         // Virtualize response
         let virtualized = self.virtualize_response(response, &mapping)?;
 
-        // Encode response
+        // Encode response with proper header
+        // For flexible versions (Produce v9+), the response header includes tagged fields
         let mut buf = BytesMut::new();
+        let header_version = ProduceResponse::header_version(frame.api_version);
+
+        // For flexible versions (header v1), add empty tagged fields varint (0x00)
+        if header_version >= 1 {
+            buf.extend_from_slice(&[0u8]);
+        }
+
         virtualized
             .encode(&mut buf, frame.api_version)
             .map_err(|e| ProxyError::ProtocolEncode {
@@ -178,17 +210,6 @@ impl ProtocolHandler for ProduceHandler {
             })?;
 
         Ok(buf)
-    }
-}
-
-impl ProduceHandler {
-    /// Calculate the request header size for a given API version.
-    fn calculate_header_size(&self, api_version: i16) -> usize {
-        // Request header v0-v1: api_key(2) + api_version(2) + correlation_id(4) = 8
-        // Request header v2+: adds client_id (compact string)
-        // For simplicity, we'll use 8 as the minimum header size
-        // A more robust implementation would parse the actual header
-        8
     }
 }
 

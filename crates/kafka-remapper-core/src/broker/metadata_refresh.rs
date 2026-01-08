@@ -8,8 +8,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::BytesMut;
-use kafka_protocol::messages::{ApiKey, MetadataRequest, MetadataResponse, RequestHeader};
-use kafka_protocol::protocol::{Decodable, Encodable, StrBytes};
+use kafka_protocol::messages::{
+    ApiKey, MetadataRequest, MetadataResponse, RequestHeader, ResponseHeader,
+};
+use kafka_protocol::protocol::{Decodable, Encodable, HeaderVersion, StrBytes};
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
@@ -99,8 +101,11 @@ impl MetadataRefresher {
     fn build_metadata_request(&self) -> bytes::Bytes {
         let mut buf = BytesMut::new();
 
-        // Use API version 9 (common version)
-        let api_version = 9i16;
+        // Use API version 4 (widely supported, non-flexible encoding)
+        // v9+ uses flexible encoding which requires careful field initialization
+        let api_version = 4i16;
+        // Get the correct request header version for this API version
+        let request_header_version = MetadataRequest::header_version(api_version);
 
         // Build request header
         let header = RequestHeader::default()
@@ -112,15 +117,10 @@ impl MetadataRefresher {
         // Build metadata request (empty topics = all topics)
         let request = MetadataRequest::default().with_allow_auto_topic_creation(false);
 
-        // Encode header and request
-        let mut body = BytesMut::new();
-        header.encode(&mut body, api_version).ok();
-        request.encode(&mut body, api_version).ok();
-
-        // Prepend length
-        let len = body.len() as i32;
-        buf.extend_from_slice(&len.to_be_bytes());
-        buf.extend_from_slice(&body);
+        // Encode header and request with correct header version
+        // Note: Do NOT add length prefix here - send_request adds it
+        header.encode(&mut buf, request_header_version).ok();
+        request.encode(&mut buf, api_version).ok();
 
         buf.freeze()
     }
@@ -130,13 +130,15 @@ impl MetadataRefresher {
         &self,
         response_bytes: bytes::Bytes,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        // Skip correlation ID (4 bytes)
-        if response_bytes.len() < 4 {
-            return Err("response too short".into());
-        }
+        let api_version = 4i16;
 
-        let mut response_data = response_bytes.slice(4..);
-        let response = MetadataResponse::decode(&mut response_data, 9)?;
+        // Decode response header first (v4 uses header version 0)
+        let response_header_version = MetadataResponse::header_version(api_version);
+        let mut response_data = response_bytes.clone();
+        let _header = ResponseHeader::decode(&mut response_data, response_header_version)?;
+
+        // Now decode the response body
+        let response = MetadataResponse::decode(&mut response_data, api_version)?;
 
         let brokers: Vec<BrokerInfo> = response
             .brokers
@@ -179,12 +181,17 @@ mod tests {
 
         let request = refresher.build_metadata_request();
 
-        // Should have at least length prefix + header
-        assert!(request.len() > 8);
+        // Should have at least header (api_key: 2, api_version: 2, correlation_id: 4, client_id: variable)
+        // Minimum: 2 + 2 + 4 + 2 (client_id length) + "kafka-partition-proxy".len() = 31 bytes
+        assert!(request.len() >= 8, "request too short: {} bytes", request.len());
 
-        // First 4 bytes are length
-        let len = i32::from_be_bytes([request[0], request[1], request[2], request[3]]);
-        assert_eq!(len as usize, request.len() - 4);
+        // First 2 bytes are API key (should be 3 for Metadata)
+        let api_key = i16::from_be_bytes([request[0], request[1]]);
+        assert_eq!(api_key, 3, "API key should be Metadata (3)");
+
+        // Next 2 bytes are API version (should be 4)
+        let api_version = i16::from_be_bytes([request[2], request[3]]);
+        assert_eq!(api_version, 4, "API version should be 4");
     }
 
     #[tokio::test]
